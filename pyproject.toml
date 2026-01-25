@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "jpc-enkf-soft-sensing"
+version = "0.1.0"
+description = ""
+authors = ["Luxi Yu"]
+
+[tool.poetry.dependencies]
+python = "^3.14"
+numpy = "^2.4.1"
+pandas = "^3.0.0"
+scipy = "^1.17.0"
+scikit-learn = "^1.8.0"
+matplotlib = "^3.10.8"
+seaborn = "^0.13.2"
+tqdm = "^4.67.1"
+ipython = "^9.9.0"
+jupyter = "^1.1.1"
+
+[tool.poetry.group.dev.dependencies]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,5 +1,12 @@
-# Exclude large pickle files
+# Exclude large pickle files and figures
 results/results_all.pkl
+results/*.png
+
+# Poster plots and preprint
+plot_poster_*.py
+results/poster_*/
+results/poster_*.png
+*.pdf
 
 # Python
 __pycache__/

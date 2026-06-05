@@ -1,16 +1,20 @@
 # Soft Sensing of Intracellular States for CHO Cell Bioprocessing with Ensemble Kalman Filters
 
+[![bioRxiv](https://img.shields.io/badge/bioRxiv-2026.05.28.728559-b31b1b.svg)](https://doi.org/10.64898/2026.05.28.728559) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 This repository contains the code accompanying the preprint:
 
 > **Soft Sensing of Intracellular States for CHO Cell Bioprocessing with Ensemble Kalman Filters**
 > Luxi Yu, Antonio del Rio Chanona, Cleo Kontoravdi
-> *bioRxiv*, 2026. DOI: [10.64898/2026.05.28.728559](https://doi.org/10.64898/2026.05.28.728559)
+> *bioRxiv* (2026). doi: [10.64898/2026.05.28.728559](https://doi.org/10.64898/2026.05.28.728559)
 
-## Abstract
+## Overview
 
-In biotherapeutic manufacturing, product quality such as glycosylation profile is typically assessed only after harvest, limiting opportunities for corrective action during cell culture operation. Intracellular nucleotide sugar donors (NSD) directly determine glycosylation outcomes but are rarely measured, even offline, due to analytical complexity and process disruption. This work introduces a model-based soft sensing framework to infer NSD concentrations from readily available extracellular measurements. A Bayesian state estimation approach based on the Ensemble Kalman Filter (EnKF) is developed to reconstruct unmeasured intracellular states during CHO cell culture. An imperfect kinetic process model is combined with noisy extracellular measurements, explicitly accounting for process variability and measurement uncertainty through ensemble-based propagation and updates. The framework is validated using four independent experiments with distinct feeding perturbations that are not used for model calibration. Building on corrected extracellular dynamics, the EnKF demonstrated robust estimation of a growth-determining amino acid, asparagine, from correlated extracellular states. Based on the improved extracellular and amino acid estimates, the framework further enabled reliable inference of intracellular NSDs across all experiments.
+We present an **Ensemble Kalman Filter (EnKF)** framework for soft sensing of unmeasured intracellular states in Chinese Hamster Ovary (CHO) cell culture bioprocesses. An imperfect kinetic process model is combined with noisy extracellular measurements, explicitly accounting for process variability and measurement uncertainty through ensemble-based propagation and updates.
 
-**Keywords:** Bioprocess Modelling, State Estimation, Soft Sensing, Ensemble Kalman Filter, Chinese hamster ovary cells, antibody production
+Intracellular nucleotide sugar donors (NSDs) directly determine glycosylation outcomes but are rarely measured due to analytical complexity and process disruption. The EnKF dynamically infers NSD concentrations from routinely available extracellular measurements, enabling earlier and quality-relevant insight into glycosylation-critical intracellular dynamics.
+
+The framework is validated using four independent fed-batch experiments (P1–P4) with distinct galactose and uridine feeding strategies that are not used for model calibration.
 
 ## Repository Structure
 
@@ -19,65 +23,64 @@ EnKF-Soft-Sensing/
 ├── JPC_NSD_softsensing.ipynb   # Main notebook: EnKF implementation and analysis
 ├── data/
 │   └── raw/                    # Experimental data (P1–P4 fed-batch experiments)
-├── results/                    # Generated figures and outputs
-├── pyproject.toml              # Python dependencies (managed by Poetry)
+├── results/                    # Generated outputs (gitignored)
+├── pyproject.toml              # Poetry project metadata
 ├── poetry.lock
 └── LICENSE
 ```
 
-## Installation
+## Datasets
 
-### Prerequisites
-- Python 3.14+
-- [Poetry](https://python-poetry.org/) for dependency management
+| Exp. | Galactose (mM) |  |  |  | Uridine (mM) |  |  |  |
+|------|------|------|------|--------|------|------|------|--------|
+|      | Day 4 | Day 6 | Day 8 | Day 10 | Day 4 | Day 6 | Day 8 | Day 10 |
+| P1   | 79.4 | 15.4 | 11.0 | 248.3 | 15.9 | 3.1 | 2.2 | 49.7 |
+| P2   | 4.3 | 168.3 | 37.7 | 11.4 | 0.9 | 33.7 | 7.5 | 2.3 |
+| P3   | 5.2 | 3.1 | 235.3 | 249.9 | 1.0 | 0.6 | 47.1 | 50.0 |
+| P4   | 21.9 | 6.4 | 233.5 | 4.0 | 4.4 | 1.3 | 46.7 | 0.8 |
 
-### Setup
+P4 used for EnKF covariance tuning; P1–P3 used for validation. All experiments use the IgG-producing CHO-T127 cell line in 500 mL shake flasks with CD CHO medium at 36.5 °C.
+
+## Quick Start
+
+### Install dependencies
+
 ```bash
-git clone https://github.com/ly1815/EnKF-Soft-Sensing.git
-cd EnKF-Soft-Sensing
+pip install poetry
 poetry install
-poetry shell
 ```
 
-## Usage
-
-Launch the Jupyter notebook and run cells sequentially to reproduce the analysis:
+### Run the analysis
 
 ```bash
-jupyter notebook JPC_NSD_softsensing.ipynb
+poetry run jupyter notebook JPC_NSD_softsensing.ipynb
 ```
 
 The notebook covers:
 - Mechanistic model definition (extracellular cell culture + intracellular NSD metabolism)
 - Empirical observability analysis via the observability Gramian
-- Ensemble Kalman Filter implementation and state estimation
-- Validation against four independent fed-batch experiments (P1–P4)
+- EnKF implementation and state estimation
+- Validation against four independent fed-batch experiments
 - Visualization of estimated extracellular metabolites, asparagine, and intracellular NSDs
-
-## Data
-
-Experimental data are from fed-batch CHO-T127 cell cultures with distinct galactose and uridine feeding strategies. Five datasets were used for model calibration; four additional independent experiments (P1–P4) are used for EnKF validation. Raw data files are located in `data/raw/`.
-
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ## Citation
 
-If you use this code in your research, please cite:
+If you use this code, please cite:
 
 ```bibtex
 @article{yu2026softsensing,
-  title={Soft Sensing of Intracellular States for {CHO} Cell Bioprocessing with Ensemble Kalman Filters},
-  author={Yu, Luxi and del Rio Chanona, Antonio and Kontoravdi, Cleo},
-  journal={bioRxiv},
-  year={2026},
-  doi={10.64898/2026.05.28.728559}
+  title   = {Soft Sensing of Intracellular States for {CHO} Cell Bioprocessing with Ensemble Kalman Filters},
+  author  = {Yu, Luxi and del Rio Chanona, Antonio and Kontoravdi, Cleo},
+  journal = {bioRxiv},
+  year    = {2026},
+  doi     = {10.64898/2026.05.28.728559}
 }
 ```
 
 ## Contact
 
-Luxi Yu — Department of Chemical Engineering, Imperial College London
+Luxi Yu — luxiyu611@gmail.com
 
-Contact: luxiyu611@gmail.com
+## License
+
+This project is licensed under the [MIT License](LICENSE).

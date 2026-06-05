@@ -29,18 +29,6 @@ EnKF-Soft-Sensing/
 └── LICENSE
 ```
 
-## Datasets
-
-| Exp. | Galactose (mM) |  |  |  | Uridine (mM) |  |  |  |
-|------|------|------|------|--------|------|------|------|--------|
-|      | Day 4 | Day 6 | Day 8 | Day 10 | Day 4 | Day 6 | Day 8 | Day 10 |
-| P1   | 79.4 | 15.4 | 11.0 | 248.3 | 15.9 | 3.1 | 2.2 | 49.7 |
-| P2   | 4.3 | 168.3 | 37.7 | 11.4 | 0.9 | 33.7 | 7.5 | 2.3 |
-| P3   | 5.2 | 3.1 | 235.3 | 249.9 | 1.0 | 0.6 | 47.1 | 50.0 |
-| P4   | 21.9 | 6.4 | 233.5 | 4.0 | 4.4 | 1.3 | 46.7 | 0.8 |
-
-P4 used for EnKF covariance tuning; P1–P3 used for validation. All experiments use the IgG-producing CHO-T127 cell line in 500 mL shake flasks with CD CHO medium at 36.5 °C.
-
 ## Quick Start
 
 ### Install dependencies

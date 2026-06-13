@@ -1,5 +1,6 @@
 # Results (all runs, pkl, figures)
 results/
+*.pkl
 
 # Poster plots and preprint
 plot_poster_*.py

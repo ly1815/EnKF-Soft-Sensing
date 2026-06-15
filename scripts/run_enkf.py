@@ -156,6 +156,14 @@ else:
 save_pkl({
     "RUN_NAME": RUN_NAME, "KQ": KQ, "N_RUNS": N_RUNS,
     "ENSEMBLE_SIZE": ENSEMBLE_SIZE,
+    "Q_diag": np.diag(Q).copy(),
+    "R_diag": np.diag(R).copy(),
+    "P0_diag": P0_diag.copy(),
+    "PROCESS_NOISE_VAR": dict(cfg.PROCESS_NOISE_VAR),
+    "MEASUREMENT_NOISE_VAR": dict(cfg.MEASUREMENT_NOISE_VAR),
+    "INITIAL_COV_OVERRIDE": dict(getattr(cfg, 'INITIAL_COV_OVERRIDE', {})),
+    "STATE_NAMES": list(cfg.STATE_NAMES),
+    "MEASURED_STATES": list(cfg.MEASURED_STATES),
 }, "run_config.pkl")
 
 # ── Run EnKF per dataset ─────────────────────────────────────────────────────

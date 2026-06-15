@@ -281,7 +281,10 @@ def _ensemble_stats(enkf_runs_by_dataset, name, state_idx, T_kf, downsample=10):
     t = T_kf[::downsample]
     mean = np.mean(vals, axis=0)
     std = np.std(vals, axis=0)
-    return t, mean, mean - std, mean + std, mean - 2 * std, mean + 2 * std
+    # Clip lower bands at zero (concentrations cannot be negative)
+    lo1 = np.maximum(mean - std, 0)
+    lo2 = np.maximum(mean - 2 * std, 0)
+    return t, mean, lo1, mean + std, lo2, mean + 2 * std
 
 
 def _style_ax(ax):
@@ -848,7 +851,10 @@ def _ensemble_profile_stats(diag_entry, state_idx, T_kf, downsample=10):
         t = T_kf[:len(diag_entry["mean_trajectory"])][::downsample]
         m = diag_entry["mean_trajectory"][::downsample, state_idx]
         s = diag_entry["std_trajectory"][::downsample, state_idx]
-    return t, m, m - s, m + s, m - 2 * s, m + 2 * s
+    # Clip lower bands at zero (concentrations cannot be negative)
+    lo1 = np.maximum(m - s, 0)
+    lo2 = np.maximum(m - 2 * s, 0)
+    return t, m, lo1, m + s, lo2, m + 2 * s
 
 
 def plot_metabolites_with_ensemble_bands(

@@ -30,12 +30,17 @@ class EnsembleKalmanFilter:
     model and updates them when measurements are available. Only the measured
     states (extracellular metabolites) are used in the update step; unmeasured
     states (NSDs, Asn) are estimated via the model dynamics.
+
+    Supports two noise modes:
+      - additive: noise_i ~ N(0, Q_ii)  (fixed variance, default)
+      - multiplicative: noise_i ~ N(0, (cv_i * x_i)^2)  (state-proportional)
+    Per-state noise mode is controlled by process_noise_cv (dict).
     """
 
     def __init__(self, num_x, num_z):
         self.x = None       # state mean
         self.z = None        # observations
-        self.Q = None        # process noise covariance
+        self.Q = None        # process noise covariance (additive states)
         self.R = None        # measurement noise covariance
         self.fx = None       # model step function
         self.H = None        # observation matrix
@@ -46,6 +51,10 @@ class EnsembleKalmanFilter:
         self.num_x = num_x   # number of states
         self.num_X = None     # ensemble size
         self.num_z = num_z    # number of measured states
+
+        # Multiplicative noise: dict {state_index: cv} for states using
+        # state-proportional noise. States not in this dict use additive Q.
+        self.process_noise_cv = {}
 
     def create_ensemble(self, N, Cov):
         """Draw initial ensemble from multivariate normal, capped at 3-sigma."""
@@ -66,19 +75,34 @@ class EnsembleKalmanFilter:
 
     def predict(self, controls):
         """Forecast step: propagate each ensemble member through the model."""
-        X = []
+        X_new = []
         for x in self.X:
-            X.append(self.fx(x, 0.0, controls, self.dt))
+            X_new.append(self.fx(x, 0.0, controls, self.dt))
+        X_new = np.array(X_new)
 
-        # Draw process noise with 3-sigma capping
-        noise = np.random.multivariate_normal(
-            mean=np.zeros(self.num_x), cov=self.Q, size=self.num_X
-        )
-        for i in range(self.num_x):
-            sd = np.sqrt(self.Q[i, i])
-            noise[:, i] = np.clip(noise[:, i], -3.0 * sd, 3.0 * sd)
+        # Build noise per ensemble member
+        noise = np.zeros_like(X_new)
 
-        self.X = np.array(X) + noise
+        # Additive noise for states NOT in process_noise_cv
+        additive_indices = [i for i in range(self.num_x)
+                           if i not in self.process_noise_cv]
+        if additive_indices:
+            Q_add = np.diag(np.diag(self.Q)[additive_indices])
+            n_add = np.random.multivariate_normal(
+                np.zeros(len(additive_indices)), Q_add, size=self.num_X
+            )
+            for j_out, i_state in enumerate(additive_indices):
+                sd = np.sqrt(self.Q[i_state, i_state])
+                noise[:, i_state] = np.clip(n_add[:, j_out], -3.0 * sd, 3.0 * sd)
+
+        # Multiplicative noise for states in process_noise_cv
+        for i_state, cv in self.process_noise_cv.items():
+            state_vals = np.maximum(X_new[:, i_state], 1e-12)
+            sd = cv * state_vals
+            n_mult = np.random.randn(self.num_X) * sd
+            noise[:, i_state] = np.clip(n_mult, -3.0 * sd, 3.0 * sd)
+
+        self.X = X_new + noise
         self.X = np.clip(self.X, a_min=1e-12, a_max=None)
         self.x = np.mean(self.X, axis=0)
 
@@ -124,15 +148,17 @@ def run_enkf_multi_dataset(
     state_num, meas_num, ensemble_size, n_runs,
     Q, R, H, dt_kf, N_kf,
     P0=None,
+    process_noise_cv=None,
     decimal_places=2,
     save_fn=None,
 ):
     """
     Run the EnKF across all datasets with multiple independent runs.
 
-    Memory-efficient: each run's diagnostics are saved to disk immediately
-    via *save_fn* and freed from memory. Only the running sum for the mean
-    trajectory is kept in memory.
+    Parameters
+    ----------
+    process_noise_cv : dict or None
+        {state_index: cv} for states using multiplicative noise.
 
     Returns
     -------
@@ -170,6 +196,8 @@ def run_enkf_multi_dataset(
             enkf.H = H.copy()
             enkf.fx = model_step
             enkf.dt = dt_kf
+            if process_noise_cv is not None:
+                enkf.process_noise_cv = dict(process_noise_cv)
 
             init_cov = P0 if P0 is not None else Q
             enkf.create_ensemble(ensemble_size, init_cov)
@@ -263,6 +291,7 @@ def run_enkf_single_with_ensemble_diagnostics(
     state_num, meas_num, ensemble_size,
     Q, R, H, dt_kf, N_kf,
     P0=None,
+    process_noise_cv=None,
     decimal_places=2,
 ):
     """
@@ -292,6 +321,8 @@ def run_enkf_single_with_ensemble_diagnostics(
     enkf.H = H.copy()
     enkf.fx = model_step
     enkf.dt = dt_kf
+    if process_noise_cv is not None:
+        enkf.process_noise_cv = dict(process_noise_cv)
 
     init_cov = P0 if P0 is not None else Q
     enkf.create_ensemble(ensemble_size, init_cov)

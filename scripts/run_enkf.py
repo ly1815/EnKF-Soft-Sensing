@@ -90,6 +90,13 @@ Q = KQ * np.diag(var_model)
 R = np.diag(var_meas[:cfg.MEAS_NUM])
 H = np.hstack((np.eye(cfg.MEAS_NUM), np.zeros((cfg.MEAS_NUM, cfg.STATE_NUM - cfg.MEAS_NUM))))
 
+# Multiplicative noise: build {state_index: cv} for states with CV-based noise
+process_noise_cv = {}
+if hasattr(cfg, 'PROCESS_NOISE_CV'):
+    for s, cv in cfg.PROCESS_NOISE_CV.items():
+        idx = cfg.STATE_NAMES.index(s)
+        process_noise_cv[idx] = cv
+
 # Initial ensemble covariance (separate from per-step Q)
 P0_diag = var_model.copy()
 if hasattr(cfg, 'INITIAL_COV_OVERRIDE'):
@@ -160,6 +167,8 @@ save_pkl({
     "R_diag": np.diag(R).copy(),
     "P0_diag": P0_diag.copy(),
     "PROCESS_NOISE_VAR": dict(cfg.PROCESS_NOISE_VAR),
+    "PROCESS_NOISE_CV": dict(getattr(cfg, 'PROCESS_NOISE_CV', {})),
+    "process_noise_cv_indices": dict(process_noise_cv),
     "MEASUREMENT_NOISE_VAR": dict(cfg.MEASUREMENT_NOISE_VAR),
     "INITIAL_COV_OVERRIDE": dict(getattr(cfg, 'INITIAL_COV_OVERRIDE', {})),
     "STATE_NAMES": list(cfg.STATE_NAMES),
@@ -184,7 +193,8 @@ for name in DATASET_NAMES:
         state_num=cfg.STATE_NUM, meas_num=cfg.MEAS_NUM,
         ensemble_size=ENSEMBLE_SIZE, n_runs=N_RUNS,
         Q=Q, R=R, H=H, dt_kf=dt_kf, N_kf=N_kf,
-        P0=P0, save_fn=save_pkl,
+        P0=P0, process_noise_cv=process_noise_cv,
+        save_fn=save_pkl,
     )
 
 # ── RMSE ─────────────────────────────────────────────────────────────────────

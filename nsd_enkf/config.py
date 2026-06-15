@@ -322,14 +322,34 @@ NMAB_GDPFUC = 12.23e-6
 NMAB_CMPNEU5AC = 0.155e-6
 
 # ─── EnKF noise parameters ──────────────────────────────────────────────────
-# Process noise variance Sigma_x: per-state model uncertainty structure.
-# Q = KQ * diag(PROCESS_NOISE_VAR) is the additive process noise covariance.
-# Values were tuned on P4 using innovation-based diagnostics (normalised
-# innovation variance targeting ~1.0 per state). Per-state multipliers were
-# applied iteratively to account for heterogeneous model fidelity.
+# Two noise modes are supported:
+#   - Multiplicative (state-proportional): noise_i ~ N(0, (cv_i * x_i)^2)
+#     Used for measured extracellular states. Naturally gives zero noise when
+#     concentration is zero, and scales with state magnitude.
+#   - Additive (fixed variance): noise_i ~ N(0, Q_ii)
+#     Used for unmeasured states where we lack diagnostics to calibrate CV.
+#
+# PROCESS_NOISE_CV: coefficient of variation for multiplicative noise states.
+# These are dimensionless fractions (e.g., 0.03 = 3% CV per timestep).
+# Tuned on P4 via innovation-based diagnostics.
+# CV values are per-step (dt=0.01h). They compound as cv*sqrt(N_steps) between
+# measurement updates (~2400 steps = 24h apart), so 0.002/step ≈ 10% between updates.
+PROCESS_NOISE_CV = {
+    'Xv':  0.004,   # NIV=1.14
+    'mAb': 0.005,   # NIV=0.72
+    'Gal': 0.003,   # NIV=1.41
+    'Urd': 0.006,   # NIV=2.71 -> increase
+    'Glc': 0.008,   # NIV=6.50 -> increase (structural model bias)
+    'Amm': 0.005,   # NIV=1.87 -> slight increase
+    'Gln': 0.003,   # NIV=0.86
+    'Lac': 0.007,   # NIV=2.36 -> increase (structural model bias)
+}
+
+# PROCESS_NOISE_VAR: additive noise variance for states NOT in PROCESS_NOISE_CV.
+# Used for unmeasured extracellular and intracellular states.
 PROCESS_NOISE_VAR = {
-    'Xv': 2.073e+13, 'mAb': 0.1517, 'Gal': 3.121e-3, 'Urd': 5.509e-3,
-    'Glc': 0.8281, 'Amm': 1.172e-4, 'Gln': 5.538e-5, 'Lac': 1.844e-2,
+    'Xv': 0, 'mAb': 0, 'Gal': 0, 'Urd': 0,
+    'Glc': 0, 'Amm': 0, 'Gln': 0, 'Lac': 0,
     'Asn': 1e-5, 'Glu': 4.8e-5,
     'UDPGal': 2e-4, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
     'UDPGlcNAc': 1e-5, 'GDPMan': 2e-7, 'GDPFuc': 2e-7,
@@ -354,7 +374,7 @@ INITIAL_COV_OVERRIDE = {
 }
 
 ENSEMBLE_SIZE = 100
-KQ = 1.0   # Q = KQ * diag(PROCESS_NOISE_VAR); per-state values already tuned
+KQ = 1.0   # Q = KQ * diag(PROCESS_NOISE_VAR); only affects additive states
 N_RUNS = 10
 
 # ─── Dataset display customisation ──────────────────────────────────────────

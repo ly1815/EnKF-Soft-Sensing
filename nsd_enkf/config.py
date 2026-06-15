@@ -9,7 +9,7 @@ Change RUN_NAME to version a new experiment.
 from pathlib import Path
 
 # ─── Run identity ─────────────────────────────────────────────────────────────
-RUN_NAME = "run_v1"
+RUN_NAME = "tuned_v1"
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -322,22 +322,39 @@ NMAB_GDPFUC = 12.23e-6
 NMAB_CMPNEU5AC = 0.155e-6
 
 # ─── EnKF noise parameters ──────────────────────────────────────────────────
+# Process noise variance Sigma_x: per-state model uncertainty structure.
+# Q = KQ * diag(PROCESS_NOISE_VAR) is the additive process noise covariance.
+# Values were tuned on P4 using innovation-based diagnostics (normalised
+# innovation variance targeting ~1.0 per state). Per-state multipliers were
+# applied iteratively to account for heterogeneous model fidelity.
 PROCESS_NOISE_VAR = {
-    'Xv': 2.45e+15, 'mAb': 300, 'Gal': 1.0, 'Urd': 1.0,
-    'Glc': 20.0, 'Amm': 0.1625, 'Gln': 0.4, 'Lac': 1.16,
-    'Asn': 0.01, 'Glu': 0.048,
-    'UDPGal': 0.2, 'UDPGalNAc': 0.01, 'UDPGlc': 0.06,
-    'UDPGlcNAc': 0.01, 'GDPMan': 0.0002, 'GDPFuc': 0.0002,
-    'CMPNeu5Ac': 0.2,
+    'Xv': 2.073e+13, 'mAb': 0.1517, 'Gal': 3.121e-3, 'Urd': 5.509e-3,
+    'Glc': 0.8281, 'Amm': 1.172e-4, 'Gln': 5.538e-5, 'Lac': 1.844e-2,
+    'Asn': 1e-5, 'Glu': 4.8e-5,
+    'UDPGal': 2e-4, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
+    'UDPGlcNAc': 1e-5, 'GDPMan': 2e-7, 'GDPFuc': 2e-7,
+    'CMPNeu5Ac': 2e-4,
 }
 
+# Measurement noise variance R: set from experimental error bars (biological
+# triplicate variance, mean across P1-P4 datasets). These represent the
+# observed variability across biological replicates and provide a conservative
+# upper bound on measurement uncertainty.
 MEASUREMENT_NOISE_VAR = {
-    'Xv': 2.2e+14, 'mAb': 10, 'Gal': 0.002, 'Urd': 0.001,
-    'Glc': 0.08, 'Amm': 0.005, 'Gln': 1e-4, 'Lac': 0.4,
+    'Xv': 6.928e+16, 'mAb': 573.3, 'Gal': 1.739, 'Urd': 5.103e-3,
+    'Glc': 1.256, 'Amm': 4.500e-2, 'Gln': 7.350e-3, 'Lac': 0.2971,
+}
+
+# Initial ensemble covariance P0: for measured states, set from measurement
+# error bar variance; for unmeasured states, set from process noise variance.
+# Separate from per-step Q to ensure the ensemble starts with meaningful spread.
+INITIAL_COV_OVERRIDE = {
+    'Xv': 6.928e+16, 'mAb': 573.3, 'Gal': 1.739, 'Urd': 5.103e-3,
+    'Glc': 1.256, 'Amm': 4.500e-2, 'Gln': 7.350e-3, 'Lac': 0.2971,
 }
 
 ENSEMBLE_SIZE = 100
-KQ = 2e-6
+KQ = 1.0   # Q = KQ * diag(PROCESS_NOISE_VAR); per-state values already tuned
 N_RUNS = 10
 
 # ─── Dataset display customisation ──────────────────────────────────────────

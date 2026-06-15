@@ -1,10 +1,20 @@
 # Results (all runs, pkl, figures)
 results/
+
+# Pickle files (anywhere)
 *.pkl
 
-# Poster plots and preprint
-plot_poster_*.py
+# PDFs
 *.pdf
+
+# Claude Code project file
+CLAUDE.md
+
+# Poster / one-off plotting scripts
+plot_poster_*.py
+
+# Original notebook (superseded by nsd_enkf/ + scripts/)
+JPC_NSD_softsensing.ipynb
 
 # Python
 __pycache__/
@@ -46,6 +56,3 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints
-
-# Data files (if needed, adjust as necessary)
-# data/raw/*.xlsx

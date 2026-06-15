@@ -2,12 +2,8 @@
 io_utils.py
 ===========
 Centralised I/O helpers for saving/loading pickle files and figure paths.
-
-Supports loading from the legacy ``results_all.pkl`` bundle produced by
-the original notebook, as well as individual per-variable pkl files.
 """
 
-import pathlib
 import pickle
 from pathlib import Path
 
@@ -31,41 +27,6 @@ def has_results(pkl_dir=None):
     return folder is not None and folder.exists() and any(folder.glob("*.pkl"))
 
 
-def has_legacy_results(results_dir=None):
-    """Return True if results_all.pkl exists in *results_dir*."""
-    folder = Path(results_dir) if results_dir is not None else (_PKL_DIR.parent if _PKL_DIR else None)
-    return folder is not None and (folder / "results_all.pkl").exists()
-
-
-def _safe_load(path):
-    """Load a pickle file, patching WindowsPath if needed (cross-platform)."""
-    _orig = getattr(pathlib, 'WindowsPath', None)
-    try:
-        # Allow unpickling WindowsPath objects on macOS/Linux
-        pathlib.WindowsPath = pathlib.PurePosixPath
-        with open(path, 'rb') as fh:
-            return pickle.load(fh)
-    finally:
-        if _orig is not None:
-            pathlib.WindowsPath = _orig
-
-
-def load_legacy_results(results_dir=None):
-    """
-    Load the single ``results_all.pkl`` bundle from the original notebook.
-
-    Returns
-    -------
-    dict  with all the variables that were saved in the bundle.
-    """
-    folder = Path(results_dir) if results_dir is not None else (_PKL_DIR.parent if _PKL_DIR else Path("."))
-    path = folder / "results_all.pkl"
-    if not path.exists():
-        raise FileNotFoundError(f"Legacy results not found: {path}")
-    print(f"Loading legacy results from: {path}")
-    return _safe_load(path)
-
-
 def save_pkl(item, fname: str, subdir: Path = None):
     """Save *item* to _PKL_DIR / fname (or subdir / fname)."""
     folder = Path(subdir) if subdir is not None else _PKL_DIR
@@ -87,6 +48,43 @@ def load_pkl(fname: str, subdir: Path = None):
         )
     with open(path, 'rb') as fh:
         return pickle.load(fh)
+
+
+def load_per_dataset(prefix, dataset_list, n_runs, pkl_dir):
+    """
+    Load per-dataset (and optionally per-run) pkl files into a dict.
+
+    Tries these patterns in order:
+      1. {prefix}_by_dataset.pkl          (bundled, old format)
+      2. {prefix}_{name}.pkl              (per-dataset, single item)
+      3. {prefix}_{name}_run{i}.pkl       (per-dataset per-run, returns list)
+
+    Returns
+    -------
+    dict  {name: data}  where data is a single object or list of per-run objects.
+    """
+    pkl_dir = Path(pkl_dir)
+
+    # Try bundled file first
+    bundled = pkl_dir / f"{prefix}_by_dataset.pkl"
+    if bundled.exists():
+        return load_pkl(bundled.name, subdir=pkl_dir)
+
+    result = {}
+    for name in dataset_list:
+        # Per-dataset single file
+        single = pkl_dir / f"{prefix}_{name}.pkl"
+        if single.exists() and not (pkl_dir / f"{prefix}_{name}_run0.pkl").exists():
+            result[name] = load_pkl(single.name, subdir=pkl_dir)
+        # Per-run files
+        elif (pkl_dir / f"{prefix}_{name}_run0.pkl").exists():
+            result[name] = [
+                load_pkl(f"{prefix}_{name}_run{i}.pkl", subdir=pkl_dir)
+                for i in range(n_runs)
+            ]
+        else:
+            print(f"Warning: no {prefix} files found for {name}")
+    return result
 
 
 def fig_path(fname: str, subdir: Path = None) -> Path:

@@ -14,17 +14,27 @@ We present an **Ensemble Kalman Filter (EnKF)** framework for soft sensing of un
 
 Intracellular nucleotide sugar donors (NSDs) directly determine glycosylation outcomes but are rarely measured due to analytical complexity and process disruption. The EnKF dynamically infers NSD concentrations from routinely available extracellular measurements, enabling earlier and quality-relevant insight into glycosylation-critical intracellular dynamics.
 
-The framework is validated using four independent fed-batch experiments (P1–P4) with distinct galactose and uridine feeding strategies that are not used for model calibration.
+The framework is validated using four independent fed-batch experiments (P1-P4) with distinct galactose and uridine feeding strategies that are not used for model calibration.
 
 ## Repository Structure
 
 ```
 EnKF-Soft-Sensing/
-├── JPC_NSD_softsensing.ipynb   # Main notebook: EnKF implementation and analysis
-├── data/
-│   └── raw/                    # Experimental data (P1–P4 fed-batch experiments)
-├── results/                    # Generated outputs (gitignored)
-├── pyproject.toml              # Poetry project metadata
+├── nsd_enkf/                # Core library
+│   ├── config.py            #   Constants, model & noise parameters
+│   ├── data_loader.py       #   Excel data loading, feed schedules
+│   ├── model.py             #   17-state ODE model, volume integration
+│   ├── enkf.py              #   EnsembleKalmanFilter class & runners
+│   ├── analysis.py          #   RMSE, measurement ensembles, Gramian
+│   ├── plotting.py          #   Publication-quality plotting functions
+│   └── io_utils.py          #   Pickle I/O helpers
+├── scripts/
+│   ├── run_enkf.py          #   Run EnKF pipeline (compute + RMSE)
+│   ├── plot_results.py      #   Generate all figures from a run
+│   └── 05_systematic_tuning.py  # Innovation-based Q/R tuning
+├── data/raw/                # Experimental data (P1-P4, not in git)
+├── results/                 # Generated outputs (gitignored)
+├── pyproject.toml
 ├── poetry.lock
 └── LICENSE
 ```
@@ -38,18 +48,26 @@ pip install poetry
 poetry install
 ```
 
-### Run the analysis
+### Run the EnKF pipeline
 
 ```bash
-poetry run jupyter notebook JPC_NSD_softsensing.ipynb
+# Run with default parameters (all datasets, 10 runs, N=100)
+poetry run python scripts/run_enkf.py
+
+# Override parameters
+poetry run python scripts/run_enkf.py --run my_experiment --kq 0.5 --n-runs 5 --ensemble-size 200
 ```
 
-The notebook covers:
-- Mechanistic model definition (extracellular cell culture + intracellular NSD metabolism)
-- Empirical observability analysis via the observability Gramian
-- EnKF implementation and state estimation
-- Validation against four independent fed-batch experiments
-- Visualization of estimated extracellular metabolites, asparagine, and intracellular NSDs
+### Generate figures
+
+```bash
+# All figures
+poetry run python scripts/plot_results.py --run my_experiment
+
+# Only specific figure groups
+poetry run python scripts/plot_results.py --run my_experiment --only uncertainty
+poetry run python scripts/plot_results.py --run my_experiment --only diagnostics
+```
 
 ## Citation
 

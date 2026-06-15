@@ -123,29 +123,22 @@ def run_enkf_multi_dataset(
     set_meas_ens_by_dataset, T_meas_by_dataset,
     state_num, meas_num, ensemble_size, n_runs,
     Q, R, H, dt_kf, N_kf,
+    P0=None,
     decimal_places=2,
     save_fn=None,
 ):
     """
     Run the EnKF across all datasets with multiple independent runs.
 
-    Records ensemble diagnostics for every run:
-    - mean_trajectory, std_trajectory (at every timestep)
-    - ensemble_at_updates (full ensemble snapshots — first run only, to limit size)
-
-    If *save_fn* is provided it is called as ``save_fn(obj, fname)`` after each
-    dataset completes, so large results are flushed to disk immediately and freed
-    from memory.
+    Memory-efficient: each run's diagnostics are saved to disk immediately
+    via *save_fn* and freed from memory. Only the running sum for the mean
+    trajectory is kept in memory.
 
     Returns
     -------
     enkf_results_by_dataset : dict  {name: mean trajectory (N_kf+1, state_num)}
-    enkf_runs_by_dataset : dict  {name: list of per-run mean trajectories}
-    diagnostics_by_dataset : dict  {name: list of dicts per run}
     """
     enkf_results_by_dataset = {}
-    enkf_runs_by_dataset = {}
-    diagnostics_by_dataset = {}
 
     for name in tqdm(datasets_cfg.keys(), desc="Running EnKF over datasets"):
         print(f"\nRunning EnKF for {name}")
@@ -165,8 +158,8 @@ def run_enkf_multi_dataset(
         time_steps_B = [round(t, decimal_places) for t in T_meas.tolist()]
         meas_time_to_index = {t: i for i, t in enumerate(time_steps_B)}
 
-        list_EnKF = []
-        list_diag = []
+        # Running sum for mean across runs
+        mean_sum = None
 
         for run_i in range(n_runs):
             enkf = EnsembleKalmanFilter(state_num, meas_num)
@@ -178,7 +171,8 @@ def run_enkf_multi_dataset(
             enkf.fx = model_step
             enkf.dt = dt_kf
 
-            enkf.create_ensemble(ensemble_size, Q)
+            init_cov = P0 if P0 is not None else Q
+            enkf.create_ensemble(ensemble_size, init_cov)
 
             set_EnKF = [state_init.copy()]
             mean_traj = [enkf.x.copy()]
@@ -226,28 +220,38 @@ def run_enkf_multi_dataset(
                 mean_traj.append(enkf.x.copy())
                 std_traj.append(np.std(enkf.X, axis=0))
 
-            list_EnKF.append(np.array(set_EnKF))
+            run_traj = np.array(set_EnKF)
 
+            # Accumulate running sum (memory: one array, not n_runs arrays)
+            if mean_sum is None:
+                mean_sum = run_traj.copy()
+            else:
+                mean_sum += run_traj
+
+            # Build per-run diagnostics and save immediately
             run_diag = {
                 "mean_trajectory": np.array(mean_traj),
                 "std_trajectory": np.array(std_traj),
             }
             if is_first:
                 run_diag["ensemble_at_updates"] = ensemble_at_updates
-            list_diag.append(run_diag)
 
-        set_EnKF_mean = np.mean(list_EnKF, axis=0)
+            if save_fn is not None:
+                save_fn(run_diag, f"diagnostics_{name}_run{run_i}.pkl")
+                save_fn(run_traj, f"enkf_traj_{name}_run{run_i}.pkl")
+
+            # Free memory immediately
+            del run_traj, run_diag, mean_traj, std_traj, set_EnKF, enkf
+            if is_first:
+                del ensemble_at_updates
+
+        set_EnKF_mean = mean_sum / n_runs
         enkf_results_by_dataset[name] = set_EnKF_mean
-        enkf_runs_by_dataset[name] = list_EnKF
-        diagnostics_by_dataset[name] = list_diag
 
-        # Flush to disk per-dataset to free memory
         if save_fn is not None:
-            save_fn(list_diag, f"diagnostics_{name}.pkl")
-            save_fn(list_EnKF, f"enkf_runs_{name}.pkl")
             save_fn(set_EnKF_mean, f"enkf_results_{name}.pkl")
 
-    return enkf_results_by_dataset, enkf_runs_by_dataset, diagnostics_by_dataset
+    return enkf_results_by_dataset
 
 
 # ─── Diagnostic runner: record full ensemble at measurement updates ──────────
@@ -258,6 +262,7 @@ def run_enkf_single_with_ensemble_diagnostics(
     set_meas_ens, T_meas,
     state_num, meas_num, ensemble_size,
     Q, R, H, dt_kf, N_kf,
+    P0=None,
     decimal_places=2,
 ):
     """
@@ -288,7 +293,8 @@ def run_enkf_single_with_ensemble_diagnostics(
     enkf.fx = model_step
     enkf.dt = dt_kf
 
-    enkf.create_ensemble(ensemble_size, Q)
+    init_cov = P0 if P0 is not None else Q
+    enkf.create_ensemble(ensemble_size, init_cov)
 
     ensemble_at_updates = [{
         "time": 0.0,

@@ -965,7 +965,7 @@ def plot_nsd_with_ensemble_bands(
                     color="red", lw=1.8)
 
             t, m, lo1, hi1, lo2, hi2 = _ensemble_profile_stats(
-                diag["mean_trajectory"], diag["std_trajectory"],
+                diag,
                 i_global, T_kf, downsample)
             ax.fill_between(t, lo2, hi2, color="steelblue", alpha=0.15)
             ax.fill_between(t, lo1, hi1, color="steelblue", alpha=0.30)
@@ -1036,7 +1036,7 @@ def plot_asn_glu_with_ensemble_bands(
                     color="red", lw=1.8)
 
             t, m, lo1, hi1, lo2, hi2 = _ensemble_profile_stats(
-                diag["mean_trajectory"], diag["std_trajectory"],
+                diag,
                 si, T_kf, downsample)
             ax.fill_between(t, lo2, hi2, color="steelblue", alpha=0.15)
             ax.fill_between(t, lo1, hi1, color="steelblue", alpha=0.30)

@@ -25,16 +25,16 @@ Output structure:
         asparagine.png
         nsd_grid.png
         nsd_grid_with_runs.png
-        uncertainty_metabolites.png
-        uncertainty_nsd.png
-        uncertainty_asn_glu.png
+        crossrun_metabolites.png        — cross-run ±σ (reproducibility across 10 runs)
+        crossrun_nsd.png
+        crossrun_asn_glu.png
         spread_evolution.png
         ensemble_std_{P1..P4}.png
         ensemble_snapshots_{P1..P4}.png
         forecast_vs_analysis_{P1..P4}.png
-        posterior_metabolites.png
-        posterior_nsd.png
-        posterior_asn_glu.png
+        withinrun_metabolites.png       — within-run ±σ (posterior ensemble uncertainty)
+        withinrun_nsd.png
+        withinrun_asn_glu.png
 """
 
 import argparse
@@ -167,7 +167,7 @@ if do_all or args.only == "uncertainty":
         load_dataset, T_model, T_kf, T_meas_by_dataset,
         cfg.STATE_NAMES, cfg.AXIS_NAMES, cfg.MEAS_NUM,
         dataset_list=dataset_list, dataset_colours=cfg.DATASET_COLOURS,
-        save_path=fig_path("uncertainty_metabolites.png"),
+        save_path=fig_path("crossrun_metabolites.png"),
     )
 
     print("  NSD states ...", flush=True)
@@ -175,7 +175,7 @@ if do_all or args.only == "uncertainty":
         set_model_by_dataset, get_enkf_results(), get_enkf_runs(),
         load_dataset, T_model, T_kf, T_meas_by_dataset, cfg.AXIS_NAMES,
         dataset_list=dataset_list,
-        save_path=fig_path("uncertainty_nsd.png"),
+        save_path=fig_path("crossrun_nsd.png"),
     )
 
     print("  Asn + Glu ...", flush=True)
@@ -184,7 +184,7 @@ if do_all or args.only == "uncertainty":
         load_dataset, T_model, T_kf, T_meas_by_dataset, cfg.AXIS_NAMES,
         state_indices=(8, 9), state_labels=("Asn", "Glu"),
         dataset_list=dataset_list,
-        save_path=fig_path("uncertainty_asn_glu.png"),
+        save_path=fig_path("crossrun_asn_glu.png"),
     )
 
     print("  Ensemble spread evolution ...", flush=True)
@@ -235,7 +235,7 @@ if do_all or args.only == "posterior":
         load_dataset, T_model, T_kf, T_meas_by_dataset,
         cfg.STATE_NAMES, cfg.AXIS_NAMES, cfg.MEAS_NUM,
         dataset_list=dataset_list, dataset_colours=cfg.DATASET_COLOURS,
-        save_path=fig_path("posterior_metabolites.png"),
+        save_path=fig_path("withinrun_metabolites.png"),
     )
 
     print("  NSD states ...", flush=True)
@@ -243,7 +243,7 @@ if do_all or args.only == "posterior":
         set_model_by_dataset, get_diagnostics(),
         load_dataset, T_model, T_kf, T_meas_by_dataset, cfg.AXIS_NAMES,
         dataset_list=dataset_list,
-        save_path=fig_path("posterior_nsd.png"),
+        save_path=fig_path("withinrun_nsd.png"),
     )
 
     print("  Asn + Glu ...", flush=True)
@@ -251,7 +251,7 @@ if do_all or args.only == "posterior":
         set_model_by_dataset, get_diagnostics(),
         load_dataset, T_model, T_kf, T_meas_by_dataset, cfg.AXIS_NAMES,
         dataset_list=dataset_list,
-        save_path=fig_path("posterior_asn_glu.png"),
+        save_path=fig_path("withinrun_asn_glu.png"),
     )
 
 print("\nAll plots complete.")

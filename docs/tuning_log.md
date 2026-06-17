@@ -239,7 +239,7 @@ No innovation-based tuning is possible since these states are not measured.
 |-------|-------------------|-----------|
 | Asn | 1e-5 | Small; Asn is strongly coupled to growth and indirectly corrected |
 | Glu | 4.8e-5 | Small; Glu is weakly measured indirectly |
-| UDPGal | 2e-4 | Moderate; tried multiplicative but reverted (see Section 3) |
+| UDPGal | 5e-6 | Reduced from 2e-4 (see below) |
 | UDPGalNAc | 1e-5 | Small; weakly coupled to measurements |
 | UDPGlc | 6e-5 | Small; coupled to Glc |
 | UDPGlcNAc | 1e-5 | Small; coupled to Gln |
@@ -284,3 +284,29 @@ No innovation-based tuning is possible since these states are not measured.
 | tuned_v2 | Multiplicative CV, clip bands | Switch to CV-based noise | `cb1e814` |
 | tuned_v3 | Increased CVs, UDP-Gal mult | Over-dispersed, reverted | `3d0a3d2` |
 | tuned_v4 | Final per-state CVs | Candidate C selected | `7be85c7` |
+| tuned_v5 | UDP-Gal Q reduced | Q 2e-4->5e-6 to fix early spikes | `(pending)` |
+
+---
+
+## 8. UDP-Gal Additive Noise Reduction
+
+### Problem
+With Q_UDPGal = 2e-4, the additive noise injected per step (sqrt(Q)=0.014 mM)
+accumulated to ~0.69 mM over 24h between measurement updates. When early-culture
+UDP-Gal is only ~0.05-0.5 mM, this corresponds to 140-700% CV, causing massive
+uncertainty spikes at measurement update times (visible as sharp upward triangles
+in the 2-sigma band plots).
+
+### Analysis
+```
+Q=2e-04: 24h cumulative std = 0.693 mM -> CV @ 0.1 mM = 693%
+Q=5e-05: 24h cumulative std = 0.346 mM -> CV @ 0.1 mM = 346%
+Q=1e-05: 24h cumulative std = 0.155 mM -> CV @ 0.1 mM = 155%
+Q=5e-06: 24h cumulative std = 0.110 mM -> CV @ 0.1 mM = 110%, CV @ 0.5 mM = 22%
+Q=2e-06: 24h cumulative std = 0.069 mM -> CV @ 0.1 mM =  69%, CV @ 0.5 mM = 14%
+```
+
+### Decision
+Q_UDPGal reduced from 2e-4 to **5e-6**. This gives ~22% CV at mid-culture
+concentrations (0.5 mM) while keeping the early-culture bands reasonable.
+The spikes are eliminated and the bands grow naturally with the state.

@@ -353,7 +353,7 @@ PROCESS_NOISE_VAR = {
     'Xv': 0, 'mAb': 0, 'Gal': 0, 'Urd': 0,
     'Glc': 0, 'Amm': 0, 'Gln': 0, 'Lac': 0,
     'Asn': 1e-5, 'Glu': 4.8e-5,
-    'UDPGal': 2e-4, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
+    'UDPGal': 5e-6, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
     'UDPGlcNAc': 1e-5, 'GDPMan': 2e-7, 'GDPFuc': 2e-7,
     'CMPNeu5Ac': 2e-4,
 }

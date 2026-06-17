@@ -335,23 +335,26 @@ NMAB_CMPNEU5AC = 0.155e-6
 # CV values are per-step (dt=0.01h). They compound as cv*sqrt(N_steps) between
 # measurement updates (~2400 steps = 24h apart), so 0.002/step ≈ 10% between updates.
 PROCESS_NOISE_CV = {
-    'Xv':  0.004,   # NIV=1.14
-    'mAb': 0.005,   # NIV=0.72
-    'Gal': 0.003,   # NIV=1.41
-    'Urd': 0.006,   # NIV=2.71 -> increase
-    'Glc': 0.008,   # NIV=6.50 -> increase (structural model bias)
-    'Amm': 0.005,   # NIV=1.87 -> slight increase
-    'Gln': 0.003,   # NIV=0.86
-    'Lac': 0.007,   # NIV=2.36 -> increase (structural model bias)
+    # Measured extracellular (tuned via innovation diagnostics on P4)
+    'Xv':  0.006,   # ~30% between updates
+    'mAb': 0.006,   # ~30% between updates
+    'Gal': 0.004,   # ~20% between updates
+    'Urd': 0.007,   # ~35% between updates
+    'Glc': 0.009,   # ~45% between updates (structural model bias)
+    'Amm': 0.006,   # ~30% between updates
+    'Gln': 0.004,   # ~20% between updates
+    'Lac': 0.008,   # ~40% between updates (structural model bias)
+    # Unmeasured intracellular (physical reasoning: model error scales with conc.)
+    'UDPGal': 0.001,  # starts near zero like Gal; small CV since unmeasured (no correction)
 }
 
 # PROCESS_NOISE_VAR: additive noise variance for states NOT in PROCESS_NOISE_CV.
-# Used for unmeasured extracellular and intracellular states.
+# Used for unmeasured states where multiplicative noise is not needed.
 PROCESS_NOISE_VAR = {
     'Xv': 0, 'mAb': 0, 'Gal': 0, 'Urd': 0,
     'Glc': 0, 'Amm': 0, 'Gln': 0, 'Lac': 0,
     'Asn': 1e-5, 'Glu': 4.8e-5,
-    'UDPGal': 2e-4, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
+    'UDPGal': 0, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
     'UDPGlcNAc': 1e-5, 'GDPMan': 2e-7, 'GDPFuc': 2e-7,
     'CMPNeu5Ac': 2e-4,
 }

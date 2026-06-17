@@ -335,15 +335,15 @@ NMAB_CMPNEU5AC = 0.155e-6
 # CV values are per-step (dt=0.01h). They compound as cv*sqrt(N_steps) between
 # measurement updates (~2400 steps = 24h apart), so 0.002/step ≈ 10% between updates.
 PROCESS_NOISE_CV = {
-    # Measured extracellular (tuned via innovation diagnostics on P4)
-    'Xv':  0.008,   # ~40% between updates
-    'mAb': 0.008,   # ~40% between updates
-    'Gal': 0.006,   # ~30% between updates
-    'Urd': 0.008,   # ~40% between updates
-    'Glc': 0.010,   # ~50% between updates (structural model bias)
-    'Amm': 0.008,   # ~40% between updates
-    'Gln': 0.005,   # ~25% between updates
-    'Lac': 0.009,   # ~45% between updates (structural model bias)
+    # Measured extracellular — tuned per-state on P4 via NIV and 2σ coverage
+    'Xv':  0.005,   # NIV=0.70, Cov=75%
+    'mAb': 0.007,   # NIV=0.36, Cov=88%
+    'Gal': 0.004,   # NIV=1.05, Cov=88%
+    'Urd': 0.006,   # NIV=2.22, Cov=94%  (HPLC: high NIV from precise measurements)
+    'Glc': 0.008,   # NIV=5.81, Cov=75%  (structural model bias, Option A)
+    'Amm': 0.006,   # NIV=1.09, Cov=88%
+    'Gln': 0.003,   # NIV=0.80, Cov=94%
+    'Lac': 0.007,   # NIV=1.60, Cov=100%
 }
 
 # PROCESS_NOISE_VAR: additive noise variance for states NOT in PROCESS_NOISE_CV.

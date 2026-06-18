@@ -94,8 +94,13 @@ H = np.hstack((np.eye(cfg.MEAS_NUM), np.zeros((cfg.MEAS_NUM, cfg.STATE_NUM - cfg
 process_noise_cv = {}
 if hasattr(cfg, 'PROCESS_NOISE_CV'):
     for s, cv in cfg.PROCESS_NOISE_CV.items():
-        idx = cfg.STATE_NAMES.index(s)
-        process_noise_cv[idx] = cv
+        process_noise_cv[cfg.STATE_NAMES.index(s)] = cv
+
+# Localization: states excluded from Kalman update (structurally unobservable)
+no_update_indices = set()
+if hasattr(cfg, 'NO_UPDATE_STATES'):
+    for s in cfg.NO_UPDATE_STATES:
+        no_update_indices.add(cfg.STATE_NAMES.index(s))
 
 # Initial ensemble covariance (separate from per-step Q)
 P0_diag = var_model.copy()
@@ -169,6 +174,8 @@ save_pkl({
     "PROCESS_NOISE_VAR": dict(cfg.PROCESS_NOISE_VAR),
     "PROCESS_NOISE_CV": dict(getattr(cfg, 'PROCESS_NOISE_CV', {})),
     "process_noise_cv_indices": dict(process_noise_cv),
+    "no_update_indices": list(no_update_indices),
+    "NO_UPDATE_STATES": list(getattr(cfg, 'NO_UPDATE_STATES', [])),
     "MEASUREMENT_NOISE_VAR": dict(cfg.MEASUREMENT_NOISE_VAR),
     "INITIAL_COV_OVERRIDE": dict(getattr(cfg, 'INITIAL_COV_OVERRIDE', {})),
     "STATE_NAMES": list(cfg.STATE_NAMES),
@@ -194,7 +201,7 @@ for name in DATASET_NAMES:
         ensemble_size=ENSEMBLE_SIZE, n_runs=N_RUNS,
         Q=Q, R=R, H=H, dt_kf=dt_kf, N_kf=N_kf,
         P0=P0, process_noise_cv=process_noise_cv,
-        save_fn=save_pkl,
+        no_update_indices=no_update_indices, save_fn=save_pkl,
     )
 
 # ── RMSE ─────────────────────────────────────────────────────────────────────

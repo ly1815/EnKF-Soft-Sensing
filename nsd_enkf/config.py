@@ -353,7 +353,7 @@ PROCESS_NOISE_VAR = {
     'Xv': 0, 'mAb': 0, 'Gal': 0, 'Urd': 0,
     'Glc': 0, 'Amm': 0, 'Gln': 0, 'Lac': 0,
     'Asn': 1e-5, 'Glu': 4.8e-5,
-    'UDPGal': 5e-6, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
+    'UDPGal': 0, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
     'UDPGlcNAc': 1e-5, 'GDPMan': 2e-7, 'GDPFuc': 2e-7,
     'CMPNeu5Ac': 2e-4,
 }
@@ -374,6 +374,14 @@ INITIAL_COV_OVERRIDE = {
     'Xv': 6.928e+16, 'mAb': 573.3, 'Gal': 1.739, 'Urd': 5.103e-3,
     'Glc': 1.256, 'Amm': 4.500e-2, 'Gln': 7.350e-3, 'Lac': 0.2971,
 }
+
+# States excluded from measurement update (structurally unobservable).
+# These evolve only through model propagation — no Kalman correction applied.
+# Prevents spurious cross-covariance jumps from corrupting NSD estimates.
+NO_UPDATE_STATES = [
+    'UDPGal', 'UDPGalNAc', 'UDPGlc', 'UDPGlcNAc',
+    'GDPMan', 'GDPFuc', 'CMPNeu5Ac',
+]
 
 ENSEMBLE_SIZE = 100
 KQ = 1.0   # Q = KQ * diag(PROCESS_NOISE_VAR); only affects additive states

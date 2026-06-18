@@ -56,6 +56,12 @@ class EnsembleKalmanFilter:
         # state-proportional noise. States not in this dict use additive Q.
         self.process_noise_cv = {}
 
+        # Localization: set of state indices excluded from the Kalman update.
+        # These states evolve only through the model (no measurement correction).
+        # Used for structurally unobservable states where cross-covariance
+        # corrections introduce spurious jumps.
+        self.no_update_indices = set()
+
     def create_ensemble(self, N, Cov):
         """Draw initial ensemble from multivariate normal, capped at 3-sigma."""
         self.num_X = N
@@ -133,6 +139,11 @@ class EnsembleKalmanFilter:
         # Kalman gain: K = P_xz @ P_zz^{-1}, solved as P_zz^T @ K^T = P_xz^T
         K = solve(P_zz.T, P_xz.T, assume_a='pos').T
 
+        # Localization: zero out Kalman gain for unobservable states
+        if self.no_update_indices:
+            for i in self.no_update_indices:
+                K[i, :] = 0.0
+
         # Update ensemble
         self.X += (K @ (z_ensemble - Z).T).T
         self.X = np.clip(self.X, a_min=1e-12, a_max=None)
@@ -149,6 +160,7 @@ def run_enkf_multi_dataset(
     Q, R, H, dt_kf, N_kf,
     P0=None,
     process_noise_cv=None,
+    no_update_indices=None,
     decimal_places=2,
     save_fn=None,
 ):
@@ -159,6 +171,8 @@ def run_enkf_multi_dataset(
     ----------
     process_noise_cv : dict or None
         {state_index: cv} for states using multiplicative noise.
+    no_update_indices : set or None
+        State indices excluded from Kalman update (structurally unobservable).
 
     Returns
     -------
@@ -198,6 +212,8 @@ def run_enkf_multi_dataset(
             enkf.dt = dt_kf
             if process_noise_cv is not None:
                 enkf.process_noise_cv = dict(process_noise_cv)
+            if no_update_indices is not None:
+                enkf.no_update_indices = set(no_update_indices)
 
             init_cov = P0 if P0 is not None else Q
             enkf.create_ensemble(ensemble_size, init_cov)
@@ -292,6 +308,7 @@ def run_enkf_single_with_ensemble_diagnostics(
     Q, R, H, dt_kf, N_kf,
     P0=None,
     process_noise_cv=None,
+    no_update_indices=None,
     decimal_places=2,
 ):
     """
@@ -323,6 +340,8 @@ def run_enkf_single_with_ensemble_diagnostics(
     enkf.dt = dt_kf
     if process_noise_cv is not None:
         enkf.process_noise_cv = dict(process_noise_cv)
+    if no_update_indices is not None:
+        enkf.no_update_indices = set(no_update_indices)
 
     init_cov = P0 if P0 is not None else Q
     enkf.create_ensemble(ensemble_size, init_cov)

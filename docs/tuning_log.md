@@ -284,7 +284,7 @@ No innovation-based tuning is possible since these states are not measured.
 | tuned_v2 | Multiplicative CV, clip bands | Switch to CV-based noise | `cb1e814` |
 | tuned_v3 | Increased CVs, UDP-Gal mult | Over-dispersed, reverted | `3d0a3d2` |
 | tuned_v4 | Final per-state CVs | Candidate C selected | `7be85c7` |
-| tuned_v5 | UDP-Gal Q reduced | Q 2e-4->5e-6 to fix early spikes | `(pending)` |
+| tuned_v5 | Localization + Q=0 for UDP-Gal | NSD states excluded from Kalman update | `(pending)` |
 
 ---
 
@@ -306,7 +306,50 @@ Q=5e-06: 24h cumulative std = 0.110 mM -> CV @ 0.1 mM = 110%, CV @ 0.5 mM = 22%
 Q=2e-06: 24h cumulative std = 0.069 mM -> CV @ 0.1 mM =  69%, CV @ 0.5 mM = 14%
 ```
 
+### Decision (superseded)
+Q_UDPGal was first reduced from 2e-4 to 5e-6, but this was insufficient.
+Root cause analysis (Section 9) revealed the spikes came from cross-covariance
+corrections, not additive noise. Solution: covariance localization.
+
+---
+
+## 9. Covariance Localization for NSD States
+
+### Problem
+Even with Q_UDPGal=0, UDP-Gal showed large uncertainty spikes at early
+measurement updates (std=6.1 mM when mean=0.05 mM). Diagnostic analysis
+revealed the Kalman gain K[UDPGal, Urd] = 16.07 at t=24h, meaning a 1 mM
+innovation in uridine pushed UDP-Gal by 16 mM through the cross-covariance
+correction. This is a spurious correlation arising from the small ensemble
+size and the strong mechanistic coupling between Urd and UDP-Gal synthesis.
+
+### Root cause
+In the EnKF, the Kalman update corrects ALL states (including unmeasured ones)
+via ensemble cross-covariances with measured states. For NSDs, this correction
+is theoretically justified only if the cross-covariance accurately represents
+the true sensitivity of NSDs to measurement innovations. In practice, with
+N=100 and 17 states, sample cross-covariances are noisy and can amplify
+spurious correlations, creating large jumps in structurally unobservable states.
+
 ### Decision
-Q_UDPGal reduced from 2e-4 to **5e-6**. This gives ~22% CV at mid-culture
-concentrations (0.5 mM) while keeping the early-culture bands reasonable.
-The spikes are eliminated and the bands grow naturally with the state.
+**Covariance localization:** Zero out the Kalman gain rows for all 7 NSD states
+(indices 10-16). This means NSD states are never directly corrected by the
+measurement update. Instead, their trajectories evolve purely through the
+mechanistic model, inheriting uncertainty from corrected upstream extracellular
+states via model propagation.
+
+This is physically consistent with the observability analysis: NSDs are
+structurally unobservable under the available measurement configuration,
+so no measurement feedback should reach them directly. Their inferred
+trajectories are model-conditioned inferences, not data-driven estimates.
+
+### Implementation
+- Added `no_update_indices` attribute to `EnsembleKalmanFilter`
+- K[i, :] = 0 for all i in `no_update_indices` before the update step
+- Configured in `config.py` via `NO_UPDATE_STATES` list
+- Q_UDPGal set to 0: all UDP-Gal uncertainty comes from propagated uncertainty
+
+### Effect
+- UDP-Gal is flat near zero before galactose feeding (no spurious spikes)
+- NSD bands grow naturally as upstream metabolite uncertainty propagates
+- Metabolite states unaffected (localization only applies to NSDs)

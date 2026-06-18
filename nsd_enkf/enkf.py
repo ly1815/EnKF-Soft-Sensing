@@ -110,6 +110,19 @@ class EnsembleKalmanFilter:
 
         self.X = X_new + noise
         self.X = np.clip(self.X, a_min=1e-12, a_max=None)
+
+        # Hard constraint: clip unobservable states to prevent outlier divergence.
+        # For states not corrected by measurements, a few ensemble members can
+        # diverge to extreme values through nonlinear model propagation.
+        # Clip to [0, median + 5*IQR] to remove outliers while preserving spread.
+        if self.no_update_indices:
+            for i in self.no_update_indices:
+                vals = self.X[:, i]
+                q1, q3 = np.percentile(vals, [25, 75])
+                iqr = q3 - q1
+                upper = q3 + 5.0 * max(iqr, 1e-12)
+                self.X[:, i] = np.clip(vals, 1e-12, upper)
+
         self.x = np.mean(self.X, axis=0)
 
     def update(self, z_ensemble):

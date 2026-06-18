@@ -379,8 +379,7 @@ INITIAL_COV_OVERRIDE = {
 # These evolve only through model propagation — no Kalman correction applied.
 # Prevents spurious cross-covariance jumps from corrupting NSD estimates.
 NO_UPDATE_STATES = [
-    'UDPGal', 'UDPGalNAc', 'UDPGlc', 'UDPGlcNAc',
-    'GDPMan', 'GDPFuc', 'CMPNeu5Ac',
+    'UDPGal',   # only UDP-Gal localized (near-zero instability before feeding)
 ]
 
 ENSEMBLE_SIZE = 100

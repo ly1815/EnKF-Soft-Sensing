@@ -60,6 +60,8 @@ p.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 p.add_argument("--seed", default=42, type=int)
 p.add_argument("--run", default="option_b")
 p.add_argument("--no-plots", action="store_true")
+p.add_argument("--resume", action="store_true",
+               help="Skip datasets whose pkl already exists (resume a killed run)")
 args = p.parse_args()
 
 ALPHAS = [float(a) for a in args.alphas.split(",")]
@@ -106,6 +108,18 @@ for s, sc in cfg.PROCESS_NOISE_SCALE.items():
     scale_vec[cfg.STATE_NAMES.index(s)] = sc
 P0_meas = np.array([cfg.MEASUREMENT_NOISE_VAR.get(s, 0.0) for s in cfg.STATE_NAMES])
 
+# Two-stage alpha: swept alpha applies to the NSDs; observable Asn/Glu are pinned
+# at the fixed ALPHA_OBS and excluded from the sweep.
+ALPHA_OBS = getattr(cfg, "PROCESS_NOISE_ALPHA_OBS", 0.0)
+obs_idx = [cfg.STATE_NAMES.index(s) for s in getattr(cfg, "ALPHA_OBS_STATES", [])]
+
+def alpha_var(alpha_nsd):
+    """Per-state additive variance vector for a given NSD alpha (Asn/Glu fixed)."""
+    a = np.full(cfg.STATE_NUM, float(alpha_nsd))
+    for i in obs_idx:
+        a[i] = ALPHA_OBS
+    return (a * scale_vec) ** 2
+
 n_nsd = 7
 nsd_state_idx = list(range(cfg.STATE_NUM - n_nsd, cfg.STATE_NUM))
 nsd_names = [cfg.STATE_NAMES[i] for i in nsd_state_idx]
@@ -136,7 +150,7 @@ def ds_data(name):
 def run_pass(name, alpha):
     """One EnKF diagnostic pass -> (mean_traj, std_traj)."""
     dd = ds_data(name)
-    var_model = (alpha * scale_vec) ** 2
+    var_model = alpha_var(alpha)
     P0_diag = var_model.copy()
     P0_diag[:cfg.MEAS_NUM] = P0_meas[:cfg.MEAS_NUM]
     np.random.seed(args.seed)
@@ -173,22 +187,65 @@ def mean_nrmse(mt):
     return np.nanmean([mt[n]["nrmse"] for n in nsd_names])
 
 
-# ── 1) Select ALPHA ──────────────────────────────────────────────────────────
-traj_store = {}   # (name, alpha) -> (mean, std)
-sweep_metrics = {}
+def plot_dataset(name, mt, st, best):
+    """Save the all-state grid figure for one dataset (mean + bands + model + meas)."""
+    DOWN = 20
+    tds = T_model[::DOWN]
+    dd = ds_data(name)
+    d = load_dataset(name)
+    set_meas = d["set_meas"].astype(float); set_err = d["set_meas_errorbar"].astype(float)
+    nsd_err = pd.DataFrame(d["NSD_meas_errorbar"]).apply(pd.to_numeric, errors="coerce").to_numpy()
+    asn_col = set_meas.shape[1] - 1
+    meas_by_state = {i: (set_meas[:, i], set_err[:, i]) for i in range(cfg.MEAS_NUM)}
+    meas_by_state[cfg.STATE_NAMES.index("Asn")] = (set_meas[:, asn_col], set_err[:, asn_col])
+    for j in range(n_nsd):
+        meas_by_state[nsd_state_idx[j]] = (dd["nsd"][:, j], nsd_err[:, j])
 
+    fig, axes = plt.subplots(5, 4, figsize=(20, 15)); axes = axes.flatten()
+    for si in range(cfg.STATE_NUM):
+        ax = axes[si]
+        m = mt[::DOWN, si]; s = st[::DOWN, si]
+        ax.fill_between(tds, np.maximum(m - 2 * s, 0), m + 2 * s, color="steelblue", alpha=0.15)
+        ax.fill_between(tds, np.maximum(m - s, 0), m + s, color="steelblue", alpha=0.30)
+        ax.plot(tds, m, color="steelblue", lw=2.0)
+        ax.plot(tds, dd["model"][::DOWN, si], color="red", lw=1.6)
+        if si in meas_by_state:
+            v, e = meas_by_state[si]
+            ax.errorbar(T_meas, v, yerr=e, fmt="o", color="darkorange", markersize=4,
+                        capsize=2, elinewidth=1, alpha=0.9, zorder=5)
+        tag = "" if si in meas_by_state else "  (no meas)"
+        ax.set_title(f"{cfg.STATE_NAMES[si]}{tag}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Time (h)", fontsize=9); ax.grid(alpha=0.15)
+    for k in range(cfg.STATE_NUM, len(axes)):
+        axes[k].set_visible(False)
+    fig.legend(handles=[
+        Line2D([0], [0], color="red", lw=1.8, label="Open-loop model"),
+        Line2D([0], [0], color="steelblue", lw=2.0, label="EnKF mean"),
+        Patch(facecolor="steelblue", alpha=0.30, label=r"$\pm1\sigma$"),
+        Patch(facecolor="steelblue", alpha=0.15, label=r"$\pm2\sigma$"),
+        Line2D([0], [0], color="darkorange", marker="o", lw=0, markersize=6, label="Measurements"),
+    ], loc="lower center", ncol=5, fontsize=12, frameon=False, bbox_to_anchor=(0.5, -0.005))
+    role = "train" if name == TUNE_DS else "validate"
+    fig.suptitle(f"Option B — {name} ({role}), alpha={best:g}", fontsize=15,
+                 fontweight="bold", y=1.005)
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    out = FIG_DIR / f"option_b_{name}.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
+    print(f"  saved: {out}")
+
+
+# ── 1) Select ALPHA (sweep keeps ONLY metrics; trajectories are freed) ───────
+sweep_metrics = {}
 if args.fixed_alpha is not None:
     best = args.fixed_alpha
     print(f"\nUsing fixed alpha = {best:g} (sweep skipped)")
-    mt, st = run_pass(TUNE_DS, best); traj_store[(TUNE_DS, best)] = (mt, st)
-    sweep_metrics[best] = nsd_metrics(TUNE_DS, mt, st)
 else:
     print(f"\n### Calibration sweep on {TUNE_DS} ###")
     for a in ALPHAS:
         print(f"  alpha={a:g} ...", flush=True)
         mt, st = run_pass(TUNE_DS, a)
-        traj_store[(TUNE_DS, a)] = (mt, st)
         sweep_metrics[a] = nsd_metrics(TUNE_DS, mt, st)
+        del mt, st                       # free immediately — only metrics kept
 
     def show(title, key, fmt, agg=np.nanmean, aggfmt="{:7.3f}"):
         print("\n" + title)
@@ -208,106 +265,67 @@ else:
           f"(mean NRMSE={mean_nrmse(sweep_metrics[best]):.3f})")
     print("=" * 70)
 
-# ── 2) Cross-validate + gather all-dataset trajectories at best alpha ────────
-final_metrics = {TUNE_DS: sweep_metrics[best] if best in sweep_metrics else
-                 nsd_metrics(TUNE_DS, *traj_store[(TUNE_DS, best)])}
-if VAL_DS:
-    print(f"\n### Cross-validation at alpha={best:g} ###")
-for name in VAL_DS:
-    if name == TUNE_DS:
-        continue
-    print(f"  {name} ...", flush=True)
-    mt, st = run_pass(name, best)
-    traj_store[(name, best)] = (mt, st)
-    final_metrics[name] = nsd_metrics(name, mt, st)
-
+# ── 2) Per-dataset: run -> SAVE pkl immediately -> plot -> free memory ────────
+# Each dataset is fully persisted before the next starts, so a crash mid-run keeps
+# all completed datasets. --resume skips any dataset whose pkl already exists.
 datasets_saved = [TUNE_DS] + [d for d in VAL_DS if d != TUNE_DS]
-print(f"\nNRMSE per dataset at alpha={best:g}")
-hdr = f"{'dataset':>8s} | " + " | ".join(f"{n[:9]:>9s}" for n in nsd_names) + " |   MEAN"
-print(hdr); print("-" * len(hdr))
-for name in datasets_saved:
-    r = final_metrics[name]
-    print(f"{name:>8s} | " + " | ".join(f"{r[n]['nrmse']:9.3f}" for n in nsd_names)
-          + f" | {mean_nrmse(r):6.3f}")
-if VAL_DS:
-    print(f"\nMean NRMSE  train({TUNE_DS})={mean_nrmse(final_metrics[TUNE_DS]):.3f}  "
-          f"validate={np.mean([mean_nrmse(final_metrics[n]) for n in VAL_DS if n in final_metrics]):.3f}")
+final_metrics = {}
 
-# ── 3) Save mean + std (uncertainty band) for ALL states, per dataset ───────
-print(f"\n### Saving mean/std trajectories (alpha={best:g}) ###")
-for name in datasets_saved:
-    mt, st = traj_store[(name, best)]
-    save_pkl({
-        "dataset": name, "alpha": best, "T": T_model,
-        "state_names": list(cfg.STATE_NAMES),
-        "mean_trajectory": mt,            # (N_kf+1, 17)  ensemble mean
-        "std_trajectory": st,             # (N_kf+1, 17)  ensemble std = uncertainty band
-        "band_1sigma_lo": np.maximum(mt - st, 0.0),
-        "band_1sigma_hi": mt + st,
-        "band_2sigma_lo": np.maximum(mt - 2 * st, 0.0),
-        "band_2sigma_hi": mt + 2 * st,
-        "model_trajectory": ds_data(name)["model"],
-    }, f"option_b_{name}.pkl")
-
-save_pkl({
+summary = {
     "alpha_selected": best,
+    "alpha_obs": ALPHA_OBS, "alpha_obs_states": list(getattr(cfg, "ALPHA_OBS_STATES", [])),
     "alphas_swept": ALPHAS if args.fixed_alpha is None else [best],
     "tuning_dataset": TUNE_DS, "validate_datasets": VAL_DS,
     "scale_median": dict(cfg.PROCESS_NOISE_SCALE),
     "process_noise_cv": dict(cfg.PROCESS_NOISE_CV),
     "clip_states": list(cfg.CLIP_STATES), "no_update_states": list(cfg.NO_UPDATE_STATES),
-    "sweep_metrics": sweep_metrics, "final_metrics": final_metrics,
-    "ensemble_size": ENS, "seed": args.seed,
-}, "option_b_summary.pkl")
+    "sweep_metrics": sweep_metrics, "ensemble_size": ENS, "seed": args.seed,
+}
 
-# ── 4) Per-dataset all-state figures ─────────────────────────────────────────
-if not args.no_plots:
-    print("\n### Plotting ###")
-    DOWN = 20
-    tds = T_model[::DOWN]
+print(f"\n### Run + save per dataset (alpha={best:g}) ###")
+for name in datasets_saved:
+    pkl_path = PKL_DIR / f"option_b_{name}.pkl"
+    if args.resume and pkl_path.exists():
+        print(f"  {name}: pkl exists, skipping (resume).")
+        continue
+    print(f"  {name}: running ...", flush=True)
+    mt, st = run_pass(name, best)
+
+    # save trajectory + bands IMMEDIATELY (before plotting or moving on)
+    save_pkl({
+        "dataset": name, "alpha": best, "T": T_model,
+        "state_names": list(cfg.STATE_NAMES),
+        "mean_trajectory": mt,
+        "std_trajectory": st,
+        "band_1sigma_lo": np.maximum(mt - st, 0.0), "band_1sigma_hi": mt + st,
+        "band_2sigma_lo": np.maximum(mt - 2 * st, 0.0), "band_2sigma_hi": mt + 2 * st,
+        "model_trajectory": ds_data(name)["model"],
+    }, f"option_b_{name}.pkl")
+
+    final_metrics[name] = nsd_metrics(name, mt, st)
+    r = final_metrics[name]
+    print(f"    NRMSE mean = {mean_nrmse(r):.3f}  ({name})")
+
+    # update summary on disk after every dataset (incremental crash-safety)
+    summary["final_metrics"] = final_metrics
+    save_pkl(summary, "option_b_summary.pkl")
+
+    if not args.no_plots:
+        plot_dataset(name, mt, st, best)
+
+    del mt, st                            # free before next dataset
+
+# ── 3) Recap ─────────────────────────────────────────────────────────────────
+if final_metrics:
+    print(f"\nNRMSE per dataset at alpha={best:g}")
+    hdr = f"{'dataset':>8s} | " + " | ".join(f"{n[:9]:>9s}" for n in nsd_names) + " |   MEAN"
+    print(hdr); print("-" * len(hdr))
     for name in datasets_saved:
-        mt, st = traj_store[(name, best)]
-        dd = ds_data(name)
-        d = load_dataset(name)
-        set_meas = d["set_meas"].astype(float); set_err = d["set_meas_errorbar"].astype(float)
-        nsd_err = pd.DataFrame(d["NSD_meas_errorbar"]).apply(pd.to_numeric, errors="coerce").to_numpy()
-        asn_col = set_meas.shape[1] - 1
-        meas_by_state = {i: (set_meas[:, i], set_err[:, i]) for i in range(cfg.MEAS_NUM)}
-        meas_by_state[cfg.STATE_NAMES.index("Asn")] = (set_meas[:, asn_col], set_err[:, asn_col])
-        for j in range(n_nsd):
-            meas_by_state[nsd_state_idx[j]] = (dd["nsd"][:, j], nsd_err[:, j])
-
-        fig, axes = plt.subplots(5, 4, figsize=(20, 15)); axes = axes.flatten()
-        for si in range(cfg.STATE_NUM):
-            ax = axes[si]
-            m = mt[::DOWN, si]; s = st[::DOWN, si]
-            ax.fill_between(tds, np.maximum(m - 2 * s, 0), m + 2 * s, color="steelblue", alpha=0.15)
-            ax.fill_between(tds, np.maximum(m - s, 0), m + s, color="steelblue", alpha=0.30)
-            ax.plot(tds, m, color="steelblue", lw=2.0)
-            ax.plot(tds, dd["model"][::DOWN, si], color="red", lw=1.6)
-            if si in meas_by_state:
-                v, e = meas_by_state[si]
-                ax.errorbar(T_meas, v, yerr=e, fmt="o", color="darkorange", markersize=4,
-                            capsize=2, elinewidth=1, alpha=0.9, zorder=5)
-            tag = "" if si in meas_by_state else "  (no meas)"
-            ax.set_title(f"{cfg.STATE_NAMES[si]}{tag}", fontsize=11, fontweight="bold")
-            ax.set_xlabel("Time (h)", fontsize=9); ax.grid(alpha=0.15)
-        for k in range(cfg.STATE_NUM, len(axes)):
-            axes[k].set_visible(False)
-        fig.legend(handles=[
-            Line2D([0], [0], color="red", lw=1.8, label="Open-loop model"),
-            Line2D([0], [0], color="steelblue", lw=2.0, label="EnKF mean"),
-            Patch(facecolor="steelblue", alpha=0.30, label=r"$\pm1\sigma$"),
-            Patch(facecolor="steelblue", alpha=0.15, label=r"$\pm2\sigma$"),
-            Line2D([0], [0], color="darkorange", marker="o", lw=0, markersize=6, label="Measurements"),
-        ], loc="lower center", ncol=5, fontsize=12, frameon=False, bbox_to_anchor=(0.5, -0.005))
-        role = "train" if name == TUNE_DS else "validate"
-        fig.suptitle(f"Option B — {name} ({role}), alpha={best:g}", fontsize=15,
-                     fontweight="bold", y=1.005)
-        plt.tight_layout(rect=[0, 0.03, 1, 1])
-        out = FIG_DIR / f"option_b_{name}.png"
-        fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
-        print(f"  saved: {out}")
+        if name not in final_metrics:
+            continue
+        r = final_metrics[name]
+        print(f"{name:>8s} | " + " | ".join(f"{r[n]['nrmse']:9.3f}" for n in nsd_names)
+              + f" | {mean_nrmse(r):6.3f}")
 
 print(f"\nDone. alpha={best:g}. Results in {RESULTS_DIR}")
 print(f"To adopt: set PROCESS_NOISE_ALPHA = {best:g} in config.py")

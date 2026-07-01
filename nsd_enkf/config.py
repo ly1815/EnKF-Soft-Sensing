@@ -366,7 +366,14 @@ PROCESS_NOISE_CV = {
 # Glu (no measurements) uses its open-loop median. ALPHA is per-step (dt=0.01h);
 # accumulated process-noise std over an N-step interval grows ~ alpha*scale*sqrt(N),
 # so a per-24h relative uncertainty beta corresponds to alpha = beta / sqrt(2400).
-PROCESS_NOISE_ALPHA = 0.046   # per-step; re-derived on P4 (see scripts/run_option_b.py)
+#
+# Two-stage alpha: the 7 structurally UNOBSERVABLE NSDs use PROCESS_NOISE_ALPHA;
+# the OBSERVABLE unmeasured states (Asn, Glu) are strongly coupled to the measured
+# states and well constrained by cross-covariance corrections, so they use the
+# smaller PROCESS_NOISE_ALPHA_OBS and are excluded from the alpha sweep.
+PROCESS_NOISE_ALPHA = 0.01       # NSDs; per-step, calibrated on P4 (scripts/run_option_b.py)
+PROCESS_NOISE_ALPHA_OBS = 0.001  # Asn, Glu (observable via coupling; fixed, not swept)
+ALPHA_OBS_STATES = ['Asn', 'Glu']
 
 # Median magnitude per state (measurement median, pooled P1-P4; Glu = open-loop
 # median). Fixed reference scale, independent of any single validation dataset.
@@ -383,11 +390,12 @@ PROCESS_NOISE_SCALE = {
 }
 
 # PROCESS_NOISE_VAR: additive noise variance per state (0 for measured states,
-# which use multiplicative CV noise from PROCESS_NOISE_CV). Built from the single
-# universal ALPHA and the per-state median scale above.
+# which use multiplicative CV noise from PROCESS_NOISE_CV). Built from the two-stage
+# alpha (ALPHA_OBS for Asn/Glu, ALPHA for the NSDs) and the per-state median scale.
 PROCESS_NOISE_VAR = {s: 0.0 for s in STATE_NAMES}
 for _s, _scale in PROCESS_NOISE_SCALE.items():
-    PROCESS_NOISE_VAR[_s] = (PROCESS_NOISE_ALPHA * _scale) ** 2
+    _a = PROCESS_NOISE_ALPHA_OBS if _s in ALPHA_OBS_STATES else PROCESS_NOISE_ALPHA
+    PROCESS_NOISE_VAR[_s] = (_a * _scale) ** 2
 
 # Measurement noise variance R: set from experimental error bars (biological
 # triplicate variance, mean across P1-P4 datasets). These represent the

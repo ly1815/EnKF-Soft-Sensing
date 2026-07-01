@@ -75,7 +75,14 @@ clip_indices = {cfg.STATE_NAMES.index(s) for s in cfg.CLIP_STATES}
 scale_vec = np.zeros(cfg.STATE_NUM)
 for s, sc in cfg.PROCESS_NOISE_SCALE.items():
     scale_vec[cfg.STATE_NAMES.index(s)] = sc
-var_model = (ALPHA * scale_vec) ** 2
+
+# Two-stage alpha: ALPHA applies to NSDs; observable Asn/Glu pinned at ALPHA_OBS.
+ALPHA_OBS = getattr(cfg, "PROCESS_NOISE_ALPHA_OBS", 0.0)
+obs_idx = [cfg.STATE_NAMES.index(s) for s in getattr(cfg, "ALPHA_OBS_STATES", [])]
+alpha_per_state = np.full(cfg.STATE_NUM, ALPHA)
+for _i in obs_idx:
+    alpha_per_state[_i] = ALPHA_OBS
+var_model = (alpha_per_state * scale_vec) ** 2
 
 # ── Data ─────────────────────────────────────────────────────────────────────
 volume_results = compute_volume_results(select_datasets(DS), cfg.INITIAL_VOLUMES,

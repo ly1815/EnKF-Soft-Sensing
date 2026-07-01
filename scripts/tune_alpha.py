@@ -81,6 +81,16 @@ scale_vec = np.zeros(cfg.STATE_NUM)
 for s, sc in cfg.PROCESS_NOISE_SCALE.items():
     scale_vec[cfg.STATE_NAMES.index(s)] = sc
 
+# Two-stage alpha: swept alpha applies to NSDs; observable Asn/Glu pinned at ALPHA_OBS.
+ALPHA_OBS = getattr(cfg, "PROCESS_NOISE_ALPHA_OBS", 0.0)
+obs_idx = [cfg.STATE_NAMES.index(s) for s in getattr(cfg, "ALPHA_OBS_STATES", [])]
+
+def alpha_var(alpha_nsd):
+    a = np.full(cfg.STATE_NUM, float(alpha_nsd))
+    for i in obs_idx:
+        a[i] = ALPHA_OBS
+    return (a * scale_vec) ** 2
+
 n_nsd = 7
 nsd_state_idx = list(range(cfg.STATE_NUM - n_nsd, cfg.STATE_NUM))
 nsd_names = [cfg.STATE_NAMES[i] for i in nsd_state_idx]
@@ -110,7 +120,7 @@ P0_meas = np.array([cfg.MEASUREMENT_NOISE_VAR.get(s, 0.0) for s in cfg.STATE_NAM
 def evaluate(name, alpha):
     """Run one EnKF pass; return per-NSD rmse, nrmse, coverage, spread-skill."""
     dd = ds_data(name)
-    var_model = (alpha * scale_vec) ** 2
+    var_model = alpha_var(alpha)
     P0_diag = var_model.copy()
     P0_diag[:cfg.MEAS_NUM] = P0_meas[:cfg.MEAS_NUM]
 

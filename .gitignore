@@ -1,7 +1,8 @@
-# Results (all runs, pkl, figures)
-results/
+# Results: keep figures (.png) and small JSON provenance in git; drop the heavy
+# regenerable pickles. NB: we deliberately do NOT blanket-ignore results/ — git
+# cannot re-include a file once its parent directory has been ignored.
 
-# Pickle files (anywhere)
+# Pickle files (anywhere) — regenerable EnKF trajectories, ~27 MB each, too big for git
 *.pkl
 
 # PDFs

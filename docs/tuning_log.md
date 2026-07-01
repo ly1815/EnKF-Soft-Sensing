@@ -4,13 +4,25 @@ This document records all tuning decisions for the EnKF noise parameters, includ
 the reasoning, data, and diagnostics behind each choice. It serves as a reference
 for the manuscript methods section and for future re-tuning.
 
-**Final configuration:** tuned_v6 (git commit: `1adfc95`)
+**Current configuration (as of 2026-07-01):**
+- **Measured-state process noise:** per-state multiplicative CVs (tuned_v6 values,
+  git `1adfc95`), still adopted in `config.py`. An automated re-calibration
+  (`scripts/tune_cv.py`) is in progress — see Section 12.
+- **Unmeasured-state process noise:** a single universal two-stage additive scalar —
+  `PROCESS_NOISE_ALPHA = 0.01` (7 NSDs) and `PROCESS_NOISE_ALPHA_OBS = 0.001`
+  (Asn, Glu). This "Option B" scheme supersedes the hand-picked per-state Q of
+  Section 5 — see Section 10.
+- **Localization:** none (`NO_UPDATE_STATES = []`); UDP-Gal's near-zero instability is
+  now handled by IQR clipping alone. This supersedes Section 7 — see Section 11.
+
 **Tuning dataset:** P4 (used exclusively for covariance calibration)
 **Validation datasets:** P1, P2, P3 (not used during tuning)
 
 **Diagnostic criteria:**
-- Normalised Innovation Variance (NIV): target ~1.0 per measured state
+- Normalised Innovation Variance (NIV): target ~1.0 per measured state (now driven to
+  a fixed point automatically — Section 12)
 - 2-sigma coverage: target ~95% (fraction of measurements within mean +/- 2*std)
+- NSD NRMSE (RMSE / mean measurement): selection metric for the universal alpha (Section 10)
 - RMSE: should improve over open-loop model
 
 ---
@@ -196,6 +208,10 @@ suggests bands could be slightly narrower, but kept for robustness.
 
 ## 5. Additive Process Noise for Unmeasured States
 
+> **Superseded by Section 10.** The hand-picked per-state additive Q below was
+> replaced by a single universal two-stage alpha (Option B). Retained here as the
+> historical record for tuned_v6.
+
 | State | Q (variance/step) | Reasoning |
 |-------|-------------------|-----------|
 | Asn | 1e-5 | Strongly coupled to growth, indirectly corrected |
@@ -234,6 +250,11 @@ inflate the reported std and create visual spikes in the uncertainty bands.
 ---
 
 ## 7. Selective Localization
+
+> **Superseded by Section 11.** Localization was subsequently removed entirely
+> (`NO_UPDATE_STATES = []`); UDP-Gal is now stabilised by IQR clipping alone while
+> retaining its uridine cross-covariance coupling. Retained here as the historical
+> record for tuned_v6.
 
 ### Decision
 Only **UDP-Gal** is excluded from the Kalman update (`NO_UPDATE_STATES`).
@@ -301,4 +322,132 @@ as a model fidelity limitation.
 | tuned_v3 | Increased CVs (over-dispersed) | `3d0a3d2` |
 | tuned_v4 | Per-state CV tuning (Candidate C) | `7be85c7` |
 | tuned_v5 | IQR clipping + localization (all NSDs) | `7ad9e26` |
-| **tuned_v6** | **Selective localization (UDPGal only)** | **`1adfc95`** |
+| tuned_v6 | Selective localization (UDPGal only) | `1adfc95` |
+| option_b | Universal two-stage additive alpha (0.01 NSD / 0.001 Asn,Glu); localization removed (clip only) | `4e2bcf8` |
+| cv_auto | Automated NIV=1 CV fixed-point (`scripts/tune_cv.py`); **in progress, not yet adopted** | `results/cv_tuning/` |
+
+---
+
+## 10. Universal Two-Stage Additive Process Noise (Option B)
+
+**Supersedes Section 5.**
+
+### Decision
+Unmeasured states no longer use individually hand-picked additive variances. Instead a
+single universal scalar sets each state's per-step additive variance as a fixed fraction
+of that state's characteristic magnitude:
+
+    Q_ii = (alpha * scale_i)^2
+
+where `scale_i` is the fixed median magnitude of state i (config `PROCESS_NOISE_SCALE`)
+and `alpha` is the one tunable knob shared across all unmeasured states. This is the
+standard nondimensionalisation of process noise (Q proportional to a climatological
+covariance): one knob sets the overall magnitude while the relative uncertainty
+structure across states stays fixed.
+
+### Why a magnitude (median) rather than a spread
+Using each state's characteristic level (median) avoids the "flat-model" failure:
+states whose open-loop trajectory is nearly constant (GDP-Man, CMP-Neu5Ac) still have a
+well-defined scale. For the measured NSDs the scale is the median of the pooled P1-P4
+measurements; Glu (never measured) uses its open-loop median. The scale is therefore
+independent of any single validation dataset.
+
+### Two-stage alpha
+- **7 structurally-unobservable NSDs** (UDPGal, UDPGalNAc, UDPGlc, UDPGlcNAc, GDPMan,
+  GDPFuc, CMPNeu5Ac): `PROCESS_NOISE_ALPHA = 0.01`.
+- **Observable unmeasured states** (Asn, Glu): `PROCESS_NOISE_ALPHA_OBS = 0.001`. These
+  are strongly coupled to the measured states and well constrained by cross-covariance
+  corrections, so they need far less injected noise. A single-tier alpha (same value
+  everywhere) put too much noise on Asn (git `4e2bcf8`, "one tier noise too big for
+  asn"), motivating the split. Asn/Glu are pinned at ALPHA_OBS and excluded from the sweep.
+
+### Scale values (config `PROCESS_NOISE_SCALE`, mM)
+
+| State | scale (median) | alpha stage |
+|-------|----------------|-------------|
+| Asn | 5.13 | OBS (0.001) |
+| Glu | 3.735 (open-loop median) | OBS (0.001) |
+| UDPGal | 0.5198 | NSD (0.01) |
+| UDPGalNAc | 0.1615 | NSD (0.01) |
+| UDPGlc | 0.5224 | NSD (0.01) |
+| UDPGlcNAc | 0.9022 | NSD (0.01) |
+| GDPMan | 0.5799 | NSD (0.01) |
+| GDPFuc | 0.0543 | NSD (0.01) |
+| CMPNeu5Ac | 1.112 | NSD (0.01) |
+
+### Calibration
+`alpha` is per-step (dt=0.01h); accumulated process-noise std over an N-step interval
+grows ~ alpha*scale*sqrt(N), so a per-24h relative uncertainty beta corresponds to
+alpha = beta / sqrt(2400). The NSD alpha is selected on P4 by minimising the mean NSD
+NRMSE (RMSE / mean measurement — dimensionless, so states of very different magnitude
+are comparable), then cross-validated on P1-P3. Selected value: **alpha = 0.01** (git
+`4e2bcf8`). Scripts: `scripts/tune_alpha.py` (sweep + cross-validation) and
+`scripts/run_option_b.py` (sweep + save mean/std bands for all 17 states; run stored in
+`results/ob_wide/`).
+
+---
+
+## 11. Localization Removed (Clipping Only)
+
+**Supersedes Section 7.**
+
+### Decision
+`NO_UPDATE_STATES = []` — no state is excluded from the Kalman update. Every NSD,
+including UDP-Gal, now receives cross-covariance corrections from the measured states.
+
+### Reasoning
+In tuned_v6, UDP-Gal was localized to avoid its near-zero instability (a spurious
+`K[UDPGal, Urd] ~ 16` before galactose feeding). That instability is now bounded
+directly by IQR clipping (Section 6): after each predict and update, all 7 NSDs
+(`CLIP_STATES`) are clipped to `[1e-12, Q3 + 5*IQR]`. Clipping removes the few divergent
+outlier members without discarding UDP-Gal's mechanistic coupling to uridine, so UDP-Gal
+keeps a useful measurement-informed correction instead of evolving open-loop.
+
+### Configuration
+- `NO_UPDATE_STATES = []`
+- `CLIP_STATES = [UDPGal, UDPGalNAc, UDPGlc, UDPGlcNAc, GDPMan, GDPFuc, CMPNeu5Ac]`
+
+---
+
+## 12. Automated CV Calibration (in progress)
+
+The manual 4-round per-state CV tuning of Section 4 has been replaced by an automated
+fixed-point calibration, `scripts/tune_cv.py`. Each measured state's per-step CV is
+driven to filter consistency (NIV = 1) by the fixed-point update
+
+    CV_j  <-  CV_j * sqrt(NIV_j)
+
+which converges because the innovation variance `S_jj` (hence NIV_j) is monotone
+decreasing in CV_j. All 8 NIVs come from a single EnKF pass, so a handful of iterations
+suffice. CVs are clamped to `[1e-4, 0.05]`; a state left under-dispersed at the cap is
+flagged as structural model bias (raising CV there would only mask the bias with
+inflated noise).
+
+### Current checkpoint (`results/cv_tuning/tune_cv_checkpoint.json`, iteration 8)
+
+| State | CV | NIV | Status |
+|-------|------|------|--------|
+| Xv | 0.00114 | 1.09 | converged |
+| mAb | 0.00584 | 1.02 | converged |
+| Gal | 0.00259 | 0.94 | converged |
+| Urd | 0.01913 | 1.01 | converged |
+| Glc | 0.05 | 1.36 | **capped — structural bias** |
+| Amm | 0.00530 | 1.03 | converged |
+| Gln | 0.0001 | 0.38 | **floored — over-dispersed** |
+| Lac | 0.01056 | 0.97 | converged |
+
+- **Glc** stays under-dispersed even at the CV cap (NIV 1.36), consistent with the known
+  structural glucose bias (Section 4). Left at the cap by design.
+- **Gln** is over-dispersed at the CV floor. With CV already negligible, `S ~ R`, so the
+  residual over-dispersion is driven by `R_Gln` (7.35e-3), not by process noise, and
+  cannot be removed by lowering CV further. Because it is floored (not capped) it never
+  satisfies the convergence tolerance, so the loop runs to the iteration cap. This flags
+  `R_Gln` as likely overestimated for P4.
+
+### Status
+These automated CVs are **not yet adopted** into `config.py`, which still carries the
+tuned_v6 values. Adoption is pending (i) resolving the Gln floor / `R_Gln` question and
+(ii) confirming 2-sigma coverage does not regress relative to tuned_v6 — the automated
+loop optimises NIV only, whereas the manual tuning balanced NIV against coverage (e.g.
+Urd was deliberately held at CV=0.006 despite NIV=2.22, while the automated loop raises
+it to 0.019).

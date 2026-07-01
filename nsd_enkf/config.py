@@ -346,17 +346,43 @@ PROCESS_NOISE_CV = {
     'Lac': 0.007,   # NIV=1.60, Cov=100%
 }
 
-# PROCESS_NOISE_VAR: additive noise variance for states NOT in PROCESS_NOISE_CV.
-# Unmeasured states use additive noise (multiplicative is unstable without
-# measurement correction to prevent ensemble divergence).
-PROCESS_NOISE_VAR = {
-    'Xv': 0, 'mAb': 0, 'Gal': 0, 'Urd': 0,
-    'Glc': 0, 'Amm': 0, 'Gln': 0, 'Lac': 0,
-    'Asn': 1e-5, 'Glu': 4.8e-5,
-    'UDPGal': 0, 'UDPGalNAc': 1e-5, 'UDPGlc': 6e-5,
-    'UDPGlcNAc': 1e-5, 'GDPMan': 2e-7, 'GDPFuc': 2e-7,
-    'CMPNeu5Ac': 2e-4,
+# ── Universal additive-noise scaling for unmeasured states (Option B) ────────
+# Unmeasured states use additive noise (multiplicative is unstable without a
+# measurement correction). Rather than tuning each state's variance by hand, a
+# SINGLE universal scalar ALPHA sets the per-step noise std as a fixed fraction
+# of each state's characteristic scale — the standard nondimensionalisation of
+# process noise (Q = alpha^2 * diag(scale^2), i.e. Q proportional to the
+# climatological covariance). This keeps the relative uncertainty structure
+# fixed while one knob controls the overall magnitude:
+#
+#     Q_ii = (PROCESS_NOISE_ALPHA * PROCESS_NOISE_SCALE[i]) ** 2
+#
+# The scale is the climatological standard deviation of each state from the
+# open-loop mechanistic model, averaged across P1-P4 (a fixed reference,
+# independent of any single dataset). ALPHA is per-step (dt=0.01h); the
+# accumulated process-noise std over an N-step interval grows ~ alpha*scale*sqrt(N),
+# so a per-24h relative uncertainty beta corresponds to alpha = beta / sqrt(2400).
+PROCESS_NOISE_ALPHA = 0.046   # per-step; re-derived on P4 (see scripts/tune_alpha.py)
+
+# Climatological std (open-loop model, mean across P1-P4). Fixed reference scale.
+PROCESS_NOISE_SCALE = {
+    'Asn':       1.795,
+    'Glu':       1.044,
+    'UDPGal':    0.3912,
+    'UDPGalNAc': 1.096,
+    'UDPGlc':    0.2539,
+    'UDPGlcNAc': 4.686,
+    'GDPMan':    0.03061,
+    'GDPFuc':    0.009644,
+    'CMPNeu5Ac': 0.005557,
 }
+
+# PROCESS_NOISE_VAR: additive noise variance per state (0 for measured states,
+# which use multiplicative CV noise from PROCESS_NOISE_CV). Built from the single
+# ALPHA and the per-state climatological scale above.
+PROCESS_NOISE_VAR = {s: 0.0 for s in STATE_NAMES}
+for _s, _scale in PROCESS_NOISE_SCALE.items():
+    PROCESS_NOISE_VAR[_s] = (PROCESS_NOISE_ALPHA * _scale) ** 2
 
 # Measurement noise variance R: set from experimental error bars (biological
 # triplicate variance, mean across P1-P4 datasets). These represent the
@@ -375,11 +401,20 @@ INITIAL_COV_OVERRIDE = {
     'Glc': 1.256, 'Amm': 4.500e-2, 'Gln': 7.350e-3, 'Lac': 0.2971,
 }
 
-# States excluded from measurement update (structurally unobservable).
-# These evolve only through model propagation — no Kalman correction applied.
-# Prevents spurious cross-covariance jumps from corrupting NSD estimates.
-NO_UPDATE_STATES = [
-    'UDPGal',   # only UDP-Gal localized (near-zero instability before feeding)
+# States excluded from measurement update (localization). Empty: every state,
+# including UDP-Gal, now receives cross-covariance corrections. UDP-Gal's
+# near-zero instability is handled by clipping (below) rather than by removing
+# it from the update — clipping bounds outlier members without discarding the
+# (useful) mechanistic coupling to uridine.
+NO_UPDATE_STATES = []
+
+# States whose ensemble is IQR-clipped after predict and update to bound outlier
+# divergence through nonlinear NSD propagation (independent of localization).
+# All intracellular NSDs are clipped; UDP-Gal in particular relies on this in
+# place of localization.
+CLIP_STATES = [
+    'UDPGal', 'UDPGalNAc', 'UDPGlc', 'UDPGlcNAc',
+    'GDPMan', 'GDPFuc', 'CMPNeu5Ac',
 ]
 
 ENSEMBLE_SIZE = 100

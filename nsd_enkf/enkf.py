@@ -62,6 +62,13 @@ class EnsembleKalmanFilter:
         # corrections introduce spurious jumps.
         self.no_update_indices = set()
 
+        # Clipping: set of state indices whose ensemble is IQR-clipped after each
+        # predict and update to bound outlier divergence. Independent of
+        # localization — a state can be clipped without being localized (e.g.
+        # UDP-Gal, which is Kalman-corrected but bounded to prevent near-zero
+        # blow-up). Defaults to no_update_indices for backward compatibility.
+        self.clip_indices = set()
+
     def create_ensemble(self, N, Cov):
         """Draw initial ensemble from multivariate normal, capped at 3-sigma."""
         self.num_X = N
@@ -112,18 +119,29 @@ class EnsembleKalmanFilter:
         self.X = np.clip(self.X, a_min=1e-12, a_max=None)
 
         # Hard constraint: clip unobservable states to prevent outlier divergence.
-        # For states not corrected by measurements, a few ensemble members can
-        # diverge to extreme values through nonlinear model propagation.
-        # Clip to [0, median + 5*IQR] to remove outliers while preserving spread.
-        if self.no_update_indices:
-            for i in self.no_update_indices:
-                vals = self.X[:, i]
-                q1, q3 = np.percentile(vals, [25, 75])
-                iqr = q3 - q1
-                upper = q3 + 5.0 * max(iqr, 1e-12)
-                self.X[:, i] = np.clip(vals, 1e-12, upper)
+        self._clip_unobservable()
 
         self.x = np.mean(self.X, axis=0)
+
+    def _clip_unobservable(self):
+        """
+        IQR-clip the ensemble for clip_indices states to bound outlier divergence.
+
+        For states weakly constrained by measurements, a few ensemble members can
+        diverge to extreme values through nonlinear model propagation (near zero
+        the NSD model lacks restoring feedback). Clip each such state to
+        [1e-12, Q3 + 5*IQR] to remove outliers while preserving the bulk spread.
+        Applied after both predict and update so reported bands stay bounded.
+        """
+        idxs = self.clip_indices if self.clip_indices else self.no_update_indices
+        if not idxs:
+            return
+        for i in idxs:
+            vals = self.X[:, i]
+            q1, q3 = np.percentile(vals, [25, 75])
+            iqr = q3 - q1
+            upper = q3 + 5.0 * max(iqr, 1e-12)
+            self.X[:, i] = np.clip(vals, 1e-12, upper)
 
     def update(self, z_ensemble):
         """
@@ -160,6 +178,12 @@ class EnsembleKalmanFilter:
         # Update ensemble
         self.X += (K @ (z_ensemble - Z).T).T
         self.X = np.clip(self.X, a_min=1e-12, a_max=None)
+
+        # Bound clipped states after the Kalman correction so a large single-step
+        # cross-covariance jump (e.g. UDP-Gal near zero) cannot corrupt the
+        # reported analysis band before the next predict step.
+        self._clip_unobservable()
+
         self.x = np.mean(self.X, axis=0)
 
 
@@ -174,6 +198,7 @@ def run_enkf_multi_dataset(
     P0=None,
     process_noise_cv=None,
     no_update_indices=None,
+    clip_indices=None,
     decimal_places=2,
     save_fn=None,
 ):
@@ -227,6 +252,8 @@ def run_enkf_multi_dataset(
                 enkf.process_noise_cv = dict(process_noise_cv)
             if no_update_indices is not None:
                 enkf.no_update_indices = set(no_update_indices)
+            if clip_indices is not None:
+                enkf.clip_indices = set(clip_indices)
 
             init_cov = P0 if P0 is not None else Q
             enkf.create_ensemble(ensemble_size, init_cov)
@@ -322,6 +349,7 @@ def run_enkf_single_with_ensemble_diagnostics(
     P0=None,
     process_noise_cv=None,
     no_update_indices=None,
+    clip_indices=None,
     decimal_places=2,
 ):
     """
@@ -355,6 +383,8 @@ def run_enkf_single_with_ensemble_diagnostics(
         enkf.process_noise_cv = dict(process_noise_cv)
     if no_update_indices is not None:
         enkf.no_update_indices = set(no_update_indices)
+    if clip_indices is not None:
+        enkf.clip_indices = set(clip_indices)
 
     init_cov = P0 if P0 is not None else Q
     enkf.create_ensemble(ensemble_size, init_cov)

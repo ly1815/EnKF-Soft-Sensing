@@ -357,29 +357,34 @@ PROCESS_NOISE_CV = {
 #
 #     Q_ii = (PROCESS_NOISE_ALPHA * PROCESS_NOISE_SCALE[i]) ** 2
 #
-# The scale is the climatological standard deviation of each state from the
-# open-loop mechanistic model, averaged across P1-P4 (a fixed reference,
-# independent of any single dataset). ALPHA is per-step (dt=0.01h); the
+# The scale is the CHARACTERISTIC MAGNITUDE (median) of each state — the additive
+# analogue of the measured-state CV, freezing the "fraction of typical level" at
+# a fixed reference instead of the (unobserved) live state. Using a magnitude
+# rather than a spread avoids the flat-model failure: states whose open-loop model
+# is nearly constant (GDP-Man, CMP-Neu5Ac) still have a well-defined level.
+# For the measured NSDs the scale is the median of the pooled P1-P4 measurements;
+# Glu (no measurements) uses its open-loop median. ALPHA is per-step (dt=0.01h);
 # accumulated process-noise std over an N-step interval grows ~ alpha*scale*sqrt(N),
 # so a per-24h relative uncertainty beta corresponds to alpha = beta / sqrt(2400).
-PROCESS_NOISE_ALPHA = 0.046   # per-step; re-derived on P4 (see scripts/tune_alpha.py)
+PROCESS_NOISE_ALPHA = 0.046   # per-step; re-derived on P4 (see scripts/run_option_b.py)
 
-# Climatological std (open-loop model, mean across P1-P4). Fixed reference scale.
+# Median magnitude per state (measurement median, pooled P1-P4; Glu = open-loop
+# median). Fixed reference scale, independent of any single validation dataset.
 PROCESS_NOISE_SCALE = {
-    'Asn':       1.795,
-    'Glu':       1.044,
-    'UDPGal':    0.3912,
-    'UDPGalNAc': 1.096,
-    'UDPGlc':    0.2539,
-    'UDPGlcNAc': 4.686,
-    'GDPMan':    0.03061,
-    'GDPFuc':    0.009644,
-    'CMPNeu5Ac': 0.005557,
+    'Asn':       5.13,
+    'Glu':       3.735,   # no measurements -> open-loop median
+    'UDPGal':    0.5198,
+    'UDPGalNAc': 0.1615,
+    'UDPGlc':    0.5224,
+    'UDPGlcNAc': 0.9022,
+    'GDPMan':    0.5799,
+    'GDPFuc':    0.0543,
+    'CMPNeu5Ac': 1.112,
 }
 
 # PROCESS_NOISE_VAR: additive noise variance per state (0 for measured states,
 # which use multiplicative CV noise from PROCESS_NOISE_CV). Built from the single
-# ALPHA and the per-state climatological scale above.
+# universal ALPHA and the per-state median scale above.
 PROCESS_NOISE_VAR = {s: 0.0 for s in STATE_NAMES}
 for _s, _scale in PROCESS_NOISE_SCALE.items():
     PROCESS_NOISE_VAR[_s] = (PROCESS_NOISE_ALPHA * _scale) ** 2

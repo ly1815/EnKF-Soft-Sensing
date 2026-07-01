@@ -24,9 +24,23 @@ Metrics per size (mean +/- std across runs):
 Crash-safe: each size is saved immediately; --resume skips sizes already on disk.
 
 Usage:
-    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py
-    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --sizes 25,50,100,200 --n-runs 5
-    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --resume
+    # Recommended overnight run (drops N=300; full 10 seeds) -- ~8.4 h wall time:
+    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens
+
+    # Full default sweep incl. N=300 -- ~12.6 h:
+    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --n-runs 10 --run ensemble_sens
+
+    # Resume a killed/interrupted run (each size is saved as it finishes):
+    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens --resume
+
+Runtime (measured, scales ~linearly with N): ~8.4 min per pass at N=100, so total
+wall time ~= 5.05 s * (sum of sizes / 100) * n_runs. Uses the current config.py
+(tuned_v6 measured CVs + Option B alpha=0.01/0.001), NOT the cv_tuning checkpoint.
+
+Trajectories: each run also stores its mean/std trajectory (downsampled by --traj-down,
+default x20) plus the raw innovations and S at the measurement-update times, so any
+trajectory-level statistic can be recomputed later without re-running. Pass
+--traj-down 0 for metrics only.
 """
 
 import argparse

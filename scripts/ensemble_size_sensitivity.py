@@ -62,6 +62,9 @@ p.add_argument("--sizes", default="25,50,75,100,150,200,300")
 p.add_argument("--n-runs", default=10, type=int)
 p.add_argument("--seed-offset", default=42, type=int)
 p.add_argument("--resume", action="store_true", help="skip sizes whose pkl already exists")
+p.add_argument("--traj-down", default=20, type=int,
+               help="also save per-run mean/std trajectories downsampled by this factor "
+                    "(0 = metrics only, no trajectories)")
 args = p.parse_args()
 
 DS = args.dataset
@@ -80,6 +83,8 @@ def save_pkl(obj, name):
 print("=" * 64)
 print(f"Ensemble-size sensitivity  [run={args.run}, dataset={DS}]")
 print(f"  sizes = {SIZES} | runs/size = {N_RUNS}")
+print(f"  trajectories: " + (f"saved, downsampled x{args.traj_down}"
+                             if args.traj_down > 0 else "not saved (metrics only)"))
 print("=" * 64)
 
 # ── Fixed config (current production filter) ─────────────────────────────────
@@ -217,7 +222,7 @@ def run_pass(N, seed):
     else:
         asn_nrmse = np.nan
 
-    return {
+    out = {
         "wall_time_s": wall,
         "meas_nrmse_mean": np.mean(m_nrmse), "meas_nis_mean": np.mean(m_nis),
         "meas_cov_mean": np.nanmean(m_cov),
@@ -226,6 +231,28 @@ def run_pass(N, seed):
         "nsd_ss_median": np.nanmedian(list(nsd_ss.values())),
         "asn_nrmse": asn_nrmse,
     }
+
+    # Also persist the (downsampled) mean/std trajectories + the raw innovations at
+    # update times, so any trajectory-level statistic can be recomputed later without
+    # re-running. Full ensemble is NOT stored (too large); mean+std+innovations
+    # reconstruct every diagnostic this script reports.
+    d = int(args.traj_down)
+    if d > 0:
+        out["traj"] = {
+            "down": d,
+            "state_names": list(cfg.STATE_NAMES),
+            "T": T_kf[::d].copy(),              # (M,)      downsampled time grid
+            "mean": mean_traj[::d].copy(),      # (M, 17)   ensemble mean
+            "std": std_traj[::d].copy(),        # (M, 17)   ensemble std (uncertainty band)
+        }
+        out["innov"] = {                        # at the 17 measurement-update times
+            "T_meas": T_meas.copy(),
+            "meas_names": list(cfg.MEASURED_STATES),
+            "d": innovations.copy(),            # (n_up, 8) innovation z - forecast mean
+            "S_diag": innov_covs.copy(),        # (n_up, 8) diag(P_zz + R)
+            "z": np.array(meas_at_updates),     # (n_up, 8) actual measurements
+        }
+    return out
 
 
 # ── Sweep (save each size immediately; resumable) ────────────────────────────

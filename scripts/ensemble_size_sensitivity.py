@@ -21,7 +21,8 @@ Metrics per size (mean +/- std across runs):
   Asn      : normalised RMSE
   cost     : wall-clock seconds per pass
 
-Crash-safe: each size is saved immediately; --resume skips sizes already on disk.
+Crash-safe: results are saved after every run; --resume continues from the exact
+run left off (per-size pkl holds the runs done so far), so a kill costs <=1 pass.
 
 Usage:
     # Recommended overnight run (drops N=300; full 10 seeds) -- ~8.4 h wall time:
@@ -269,24 +270,29 @@ def run_pass(N, seed):
     return out
 
 
-# ── Sweep (save each size immediately; resumable) ────────────────────────────
+# ── Sweep (save after every run; resumable at run granularity) ───────────────
 all_results = {}
 for N in SIZES:
     pkl_name = f"ensemble_N{N}.pkl"
-    if args.resume and (OUT_DIR / pkl_name).exists():
-        with open(OUT_DIR / pkl_name, "rb") as f:
-            all_results[N] = pickle.load(f)
-        print(f"\n  N={N}: loaded from disk (resume).")
-        continue
-    print(f"\n  N={N}:", flush=True)
+    pkl_path = OUT_DIR / pkl_name
     runs = []
-    for run_i in range(N_RUNS):
-        res = run_pass(N, args.seed_offset + run_i)
+    if args.resume and pkl_path.exists():
+        with open(pkl_path, "rb") as f:
+            runs = pickle.load(f)
+        if len(runs) >= N_RUNS:
+            all_results[N] = runs[:N_RUNS]
+            print(f"\n  N={N}: loaded {N_RUNS} runs from disk (resume).")
+            continue
+        print(f"\n  N={N}: resuming — {len(runs)}/{N_RUNS} runs already on disk.", flush=True)
+    else:
+        print(f"\n  N={N}:", flush=True)
+    for run_i in range(len(runs), N_RUNS):
+        res = run_pass(N, args.seed_offset + run_i)   # seed = offset+run_i -> deterministic resume
         runs.append(res)
         print(f"    run {run_i+1}/{N_RUNS}: {res['wall_time_s']:.0f}s  "
               f"NIS={res['meas_nis_mean']:.2f} NSD-ss={res['nsd_ss_median']:.2f}", flush=True)
+        save_pkl(runs, pkl_name)      # crash-safe: persist after EVERY run (kill costs <=1 pass)
     all_results[N] = runs
-    save_pkl(runs, pkl_name)      # crash-safe: persist this size before moving on
 
 # ── Aggregate ────────────────────────────────────────────────────────────────
 def agg(N, key):

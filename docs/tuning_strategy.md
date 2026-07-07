@@ -108,10 +108,20 @@ contracts to NIV = 1. All 8 NIVs come from one EnKF pass, so a handful of passes
 
 **Termination (general, no per-state special-casing):** iterate until all `|NIV−1| < tol`
 (default 0.15) or a max-iteration safeguard (`--iters`) is reached. CVs are clamped to
-`[CV_MIN, CV_MAX] = [1e-4, 0.05]`. A state that would leave that range stays pinned at the
+`[CV_MIN, CV_MAX] = [1e-4, 0.02]`. A state that would leave that range stays pinned at the
 bound and is *flagged* (capped / floored) for reporting only — the flags do not gate
 convergence. A pinned state keeps the loop running to `--iters`; the extra iterations leave
 its CV/NIV unchanged, so the result is identical to an early stop.
+
+**`CV_MAX = 0.02` is a physical ceiling, not a tuned value.** Per-step CV compounds over an
+N-step interval as `CV·√N`, so `0.02·√2400 ≈ 1.0` — a ~100% relative model error accumulated
+over a 24 h measurement interval, the most process noise we are willing to attribute to any
+single measured state. It caps structurally-biased states (Glc) at a sane band instead of
+letting the NIV=1 loop inflate their multiplicative noise without bound. (An initial
+`CV_MAX = 0.05` let Glc's CV pin at the cap and its multiplicative noise compounded to ~×11
+spread, blowing the ensemble band up to ~1000 mM against ~tens-of-mM data — meaningless
+uncertainty. 0.02 fixes this while leaving every well-behaved state, all of which converge
+at CV ≤ 0.019, untouched.)
 
 **Adoption:** the resulting CVs are written into `config.PROCESS_NOISE_CV`, replacing any
 prior hand-tuned values. NIV = 1 is the principled target for an assimilated state; where
@@ -176,9 +186,11 @@ Monte-Carlo run-to-run variability at N = 100.
   than by removing it from the update (which would discard its useful uridine coupling).
 
 **Disclosed limitations (not defects — deliberately not masked):**
-- **Glc — capped** at `CV_MAX` with NIV ≈ 1.36 (still under-dispersed). This is **structural
-  model bias** (the glucose submodel is systematically off); inflating CV to force NIV = 1
-  would only mask the bias with fake noise. Left at the cap and reported.
+- **Glc — capped** at `CV_MAX = 0.02` with NIV > 1 (still under-dispersed). This is
+  **structural model bias** (the glucose submodel is systematically off); inflating CV to
+  force NIV = 1 would only mask the bias with fake noise — and, as the `CV_MAX = 0.05` trial
+  showed, blow the multiplicative-noise band up to ~×11 the mean. Capped at the physical
+  ceiling and reported as under-dispersed.
 - **Gln — floored** at `CV_MIN` with NIV ≈ 0.38 (over-dispersed). With CV negligible, `S ≈ R`,
   so this reflects `R_Gln` (pooled P1–P4 mean) being conservative for P4, **not** a process-
   noise issue. R is kept from data; the mild over-dispersion is conservative (wider band, the

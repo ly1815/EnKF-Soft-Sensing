@@ -460,6 +460,16 @@ unchanged, so the final CVs are identical to stopping early — running to the c
 expected, honest behaviour when a state is genuinely un-tunable to NIV=1. The
 `capped`/`floored` flags are recorded for reporting (tables, plots, JSON) only.
 
+### CV cap reduced 0.05 → 0.02 (physical ceiling)
+The first full auto-CV run used `CV_MAX = 0.05`. Glc (structural bias) pinned at that cap,
+and its multiplicative process noise compounded over the ~2400-step measurement interval to
+`0.05·√2400 ≈ ×11` relative spread — blowing the Glc ensemble band up to ~1000 mM against
+tens-of-mM data (a meaningless uncertainty band). `CV_MAX` is now `0.02`, a physical ceiling
+(`0.02·√2400 ≈ 100%`/24h max model error), the most process noise we attribute to any single
+measured state. Every well-behaved state converges at CV ≤ 0.019, so the tighter cap only
+reins in Glc, which stays capped (under-dispersed) and is reported honestly as structural
+bias. No per-state special-casing — one principled global cap.
+
 ### Artifacts (per run, `results/<run>/`)
 `tune_cv.py` now saves, at the final CVs: `pkl/cv_tuned_<DS>.pkl` (all-17-state mean +
 std trajectories, ±1σ/±2σ bands, and the open-loop model trajectory),

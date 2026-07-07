@@ -182,6 +182,45 @@ def model_params(state, ng=1):
 
 # ─── Model step (single integration step) ───────────────────────────────────
 
+def _dynamic_model(t, state, Fin, Fout_ctrl, V, Gal_feed, Urd_feed):
+    """RHS of the full mechanistic ODE (module-level so a single integrator can be
+    reused across calls; controls are passed via ode.set_f_params)."""
+    (Xv, mAb, Gal, Urd, Glc, Amm, Gln, Lac, Asn, Glu,
+     UDPGal, UDPGalNAc, UDPGlc, UDPGlcNAc, GDPMan, GDPFuc, CMPNeu5Ac) = state
+
+    (mu, mu_d, Qgal, Qurd, Qglc, Qamm, Qgln, Qlac, Qglu, Qasn, Gln_int, QmAb,
+     Fout_UDPGal, Fout_UDPGalNAc, Fout_UDPGlc, Fout_UDPGlcNAc,
+     Fout_GDPMan, Fout_GDPFuc, Fout_CMPNeu5Ac,
+     r1_f, r2_f, r2_bf, r3_f, r4_f, r5_f, r6_f, r6_gal, r7_f,
+     r7_sink, r1_sink, r6_sink,
+     r1_urd, r2_urd, r4_urd, r6_urd) = model_params(state, ng=1)
+
+    dXv = Xv * ((mu - mu_d) * V - Fin) / V
+    dmAb = (QmAb * V * Xv - Fin * mAb) / V
+
+    dGal = (Fin * (Gal_feed - Gal) + Qgal * V * Xv) / V
+    dUrd = (Fin * (Urd_feed - Urd) + Qurd * V * Xv) / V
+    dGlc = (Fin * (GLC_FEED - Glc) + Qglc * V * Xv) / V
+    dAmm = (Fin * (AMM_FEED - Amm) + Qamm * V * Xv) / V
+    dGln = (Fin * (GLN_FEED - Gln) + Qgln * V * Xv) / V
+    dLac = (Fin * (LAC_FEED - Lac) + Qlac * V * Xv) / V
+    dAsn = (Fin * (ASN_FEED - Asn) + Qasn * V * Xv) / V
+    dGlu = (Fin * (GLU_FEED - Glu) + Qglu * V * Xv) / V
+
+    dUDPGal = r6_f + r6_urd + r6_gal - r6_sink - Fout_UDPGal
+    dUDPGalNAc = r4_f + r4_urd - Fout_UDPGalNAc
+    dUDPGlc = r2_f + r2_bf + r2_urd - Fout_UDPGlc
+    dUDPGlcNAc = r1_f + r1_urd - r4_f - r5_f - r1_sink - Fout_UDPGlcNAc
+    dGDPMan = r3_f - r7_f - Fout_GDPMan
+    dGDPFuc = r7_f - r7_sink - Fout_GDPFuc
+    dCMPNeu5Ac = r5_f - Fout_CMPNeu5Ac
+
+    return np.array([
+        dXv, dmAb, dGal, dUrd, dGlc, dAmm, dGln, dLac, dAsn, dGlu,
+        dUDPGal, dUDPGalNAc, dUDPGlc, dUDPGlcNAc, dGDPMan, dGDPFuc, dCMPNeu5Ac,
+    ], dtype="float64")
+
+
 def model_step(current_state, time, controls, step_len):
     """
     One integration step of the full mechanistic model.
@@ -215,48 +254,18 @@ def model_step(current_state, time, controls, step_len):
     Gal_feed = _to_scalar(Gal_feed)
     Urd_feed = _to_scalar(Urd_feed)
 
-    def dynamic_model(t, state):
-        (Xv, mAb, Gal, Urd, Glc, Amm, Gln, Lac, Asn, Glu,
-         UDPGal, UDPGalNAc, UDPGlc, UDPGlcNAc, GDPMan, GDPFuc, CMPNeu5Ac) = state
-
-        (mu, mu_d, Qgal, Qurd, Qglc, Qamm, Qgln, Qlac, Qglu, Qasn, Gln_int, QmAb,
-         Fout_UDPGal, Fout_UDPGalNAc, Fout_UDPGlc, Fout_UDPGlcNAc,
-         Fout_GDPMan, Fout_GDPFuc, Fout_CMPNeu5Ac,
-         r1_f, r2_f, r2_bf, r3_f, r4_f, r5_f, r6_f, r6_gal, r7_f,
-         r7_sink, r1_sink, r6_sink,
-         r1_urd, r2_urd, r4_urd, r6_urd) = model_params(state, ng=1)
-
-        dXv = Xv * ((mu - mu_d) * V - Fin) / V
-        dmAb = (QmAb * V * Xv - Fin * mAb) / V
-
-        dGal = (Fin * (Gal_feed - Gal) + Qgal * V * Xv) / V
-        dUrd = (Fin * (Urd_feed - Urd) + Qurd * V * Xv) / V
-        dGlc = (Fin * (GLC_FEED - Glc) + Qglc * V * Xv) / V
-        dAmm = (Fin * (AMM_FEED - Amm) + Qamm * V * Xv) / V
-        dGln = (Fin * (GLN_FEED - Gln) + Qgln * V * Xv) / V
-        dLac = (Fin * (LAC_FEED - Lac) + Qlac * V * Xv) / V
-        dAsn = (Fin * (ASN_FEED - Asn) + Qasn * V * Xv) / V
-        dGlu = (Fin * (GLU_FEED - Glu) + Qglu * V * Xv) / V
-
-        dUDPGal = r6_f + r6_urd + r6_gal - r6_sink - Fout_UDPGal
-        dUDPGalNAc = r4_f + r4_urd - Fout_UDPGalNAc
-        dUDPGlc = r2_f + r2_bf + r2_urd - Fout_UDPGlc
-        dUDPGlcNAc = r1_f + r1_urd - r4_f - r5_f - r1_sink - Fout_UDPGlcNAc
-        dGDPMan = r3_f - r7_f - Fout_GDPMan
-        dGDPFuc = r7_f - r7_sink - Fout_GDPFuc
-        dCMPNeu5Ac = r5_f - Fout_CMPNeu5Ac
-
-        return np.array([
-            dXv, dmAb, dGal, dUrd, dGlc, dAmm, dGln, dLac, dAsn, dGlu,
-            dUDPGal, dUDPGalNAc, dUDPGlc, dUDPGlcNAc, dGDPMan, dGDPFuc, dCMPNeu5Ac,
-        ], dtype="float64")
-
-    ode = scp.ode(dynamic_model)
-    ode.set_integrator("lsoda", nsteps=3000)
-    ode.set_initial_value(current_state, time)
-
-    new_state = ode.integrate(ode.t + step_len)
-    return _to_1d(new_state)
+    # Integrate one step with LSODA via odeint — a SINGLE native call that allocates and
+    # releases its work arrays each call. This replaces the old pattern of constructing a
+    # fresh scipy.integrate.ode(...).integrate() on every call, which leaks native LSODA
+    # workspace unboundedly over the millions of calls per EnKF pass and OOM-kills long
+    # runs. rtol/atol/mxstep mirror the previous ode+lsoda defaults, so the numerics are
+    # unchanged (verified bit-close against a reference trajectory).
+    traj = scp.odeint(
+        _dynamic_model, current_state, [time, time + step_len],
+        args=(Fin, Fout_ctrl, V, Gal_feed, Urd_feed),
+        tfirst=True, rtol=1e-6, atol=1e-12, mxstep=3000,
+    )
+    return _to_1d(traj[-1])
 
 
 # ─── Open-loop simulation ───────────────────────────────────────────────────

@@ -423,7 +423,7 @@ driven to filter consistency (NIV = 1) by the fixed-point update
 
 which converges because the innovation variance `S_jj` (hence NIV_j) is monotone
 decreasing in CV_j. All 8 NIVs come from a single EnKF pass, so a handful of iterations
-suffice. CVs are clamped to `[1e-4, 0.05]`; a state left under-dispersed at the cap is
+suffice. CVs are clamped to `[CV_MIN, CV_MAX]`; a state left under-dispersed at the cap is
 flagged as structural model bias (raising CV there would only mask the bias with
 inflated noise).
 
@@ -460,19 +460,23 @@ unchanged, so the final CVs are identical to stopping early — running to the c
 expected, honest behaviour when a state is genuinely un-tunable to NIV=1. The
 `capped`/`floored` flags are recorded for reporting (tables, plots, JSON) only.
 
-### CV cap: 0.05 → 0.02 → 0.01 (physical band-plausibility ceiling)
+### CV cap: 0.05 → 0.02 → 0.01 → 0.006 (physical band-plausibility ceiling)
 `CV_MAX` is a physical ceiling on the per-interval uncertainty (`CV·√2400`), reframed to
 bound each state's band to a physically plausible range rather than to enforce consistency:
 - **0.05:** Glc pinned there; its multiplicative noise compounded to `0.05·√2400 ≈ ×11`,
   blowing the Glc band up to ~1000 mM against tens-of-mM data.
-- **0.02** (~100%/24h): still reached ~200 mM for Glc — physically impossible for a ~144 mM
-  glucose feed.
-- **0.01** (~50%/24h): adopted. Bands stay physically plausible. The trade is explicit and
-  deliberate: glucose (strong structural bias) and, to a lesser degree, Urd (NIV=1 CV
-  ≈ 0.019) and Lac (≈ 0.011) now pin at the cap and are left **under-dispersed (NIV > 1)**.
-  This is a bioprocessing decision — a physically bounded band is preferred over a
-  statistically consistent but physically impossible one. Xv, mAb, Gal, Amm converge below
-  the cap at NIV ≈ 1; Gln floors (R-driven). One global cap, no per-state special-casing.
+- **0.02** (~100%/24h): still ~200 mM for Glc — physically impossible for a ~144 mM feed.
+- **0.01** (~50%/24h): ~80 mM for Glc — still too wide.
+- **0.006** (~30%/24h): **adopted.** Sits just above mAb's NIV=1 CV (~0.0058) — the tightest
+  ceiling that still caps only the three genuinely bias-limited states (Glc, Urd ≈ 0.019,
+  Lac ≈ 0.011) and leaves Xv, mAb, Gal, Amm at NIV ≈ 1 (Gln floors, R-driven). Those three
+  are left **under-dispersed (NIV > 1)** by design — a bioprocessing decision that a
+  physically bounded band beats a statistically consistent but physically impossible one.
+- IQR-clipping glucose's upper tail was also trialled (Glc added to `CLIP_STATES`) but did
+  **not** help: the band width is bulk multiplicative spread, not outliers, so trimming the
+  tail barely moved it. Reverted — the tighter cap bounds Glc, not clipping.
+
+One global cap, no per-state special-casing.
 
 ### Artifacts (per run, `results/<run>/`)
 `tune_cv.py` now saves, at the final CVs: `pkl/cv_tuned_<DS>.pkl` (all-17-state mean +

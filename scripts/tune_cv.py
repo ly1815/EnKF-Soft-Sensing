@@ -39,10 +39,11 @@ Outputs (results/<run>/):
   - figures/cv_niv_convergence_<DS>.png : NIV per iteration -> 1.0
   - figures/cv_tuned_states_<DS>.png    : all-17-state grid (mean, bands, model, meas)
 
-The CV cap CV_MAX (default 0.01) is a physical band-plausibility ceiling, NOT a tuned
-value: 0.01/step compounds to ~0.01*sqrt(2400) ~ 0.5, i.e. ~50% accumulated model error
+The CV cap CV_MAX (default 0.006) is a physical band-plausibility ceiling, NOT a tuned
+value: 0.006/step compounds to ~0.006*sqrt(2400) ~ 0.29, i.e. ~30% accumulated model error
 over a 24h measurement interval, which keeps each state's uncertainty band within
-physically plausible metabolite ranges. Filter consistency (NIV=1) is the primary target,
+physically plausible metabolite ranges. 0.006 sits just above mAb's NIV=1 CV (~0.0058), so
+it caps only the bias-limited states (Glc, Urd, Lac) and leaves the rest at NIV~1. Filter consistency (NIV=1) is the primary target,
 but where reaching it would demand a larger CV -- driven by structural model bias, chiefly
 glucose (whose NIV=1 band climbed toward ~200 mM against a ~144 mM feed, i.e. physically
 impossible) -- the state is pinned at the cap and left UNDER-dispersed (NIV>1). A physically
@@ -92,11 +93,11 @@ parser = argparse.ArgumentParser(description="Systematic per-state CV calibratio
 parser.add_argument("--dataset", default="P4")
 parser.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 parser.add_argument("--iters", default=12, type=int)
-parser.add_argument("--cv-max", default=0.01, type=float,
-                    help="per-step CV cap; 0.01 ~ 50%%/24h accumulated model error, a "
-                         "physical band-plausibility ceiling. Bias-limited states (Glc, and "
-                         "Urd/Lac) pin here at NIV>1 rather than inflating the band beyond "
-                         "physically plausible metabolite ranges")
+parser.add_argument("--cv-max", default=0.006, type=float,
+                    help="per-step CV cap; 0.006 ~ 30%%/24h accumulated model error, a "
+                         "physical band-plausibility ceiling. Sits just above mAb's NIV=1 "
+                         "CV (~0.0058), so it caps only the bias-limited states (Glc, Urd, "
+                         "Lac) at NIV>1 and leaves the rest at NIV~1")
 parser.add_argument("--cv-min", default=1e-4, type=float)
 parser.add_argument("--tol", default=0.15, type=float, help="stop when all |NIV-1| < tol (uncapped states)")
 parser.add_argument("--seed", default=42, type=int)

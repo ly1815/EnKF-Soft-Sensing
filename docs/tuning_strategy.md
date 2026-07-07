@@ -108,25 +108,27 @@ contracts to NIV = 1. All 8 NIVs come from one EnKF pass, so a handful of passes
 
 **Termination (general, no per-state special-casing):** iterate until all `|NIV−1| < tol`
 (default 0.15) or a max-iteration safeguard (`--iters`) is reached. CVs are clamped to
-`[CV_MIN, CV_MAX] = [1e-4, 0.02]`. A state that would leave that range stays pinned at the
+`[CV_MIN, CV_MAX] = [1e-4, 0.006]`. A state that would leave that range stays pinned at the
 bound and is *flagged* (capped / floored) for reporting only — the flags do not gate
 convergence. A pinned state keeps the loop running to `--iters`; the extra iterations leave
 its CV/NIV unchanged, so the result is identical to an early stop.
 
-**`CV_MAX = 0.01` is a physical band-plausibility ceiling, not a tuned value, and it can
+**`CV_MAX = 0.006` is a physical band-plausibility ceiling, not a tuned value, and it can
 override the NIV=1 target.** Per-step CV compounds over an N-step interval as `CV·√N`, so
-`0.01·√2400 ≈ 0.5` — a ~50% relative model error accumulated over a 24 h measurement
+`0.006·√2400 ≈ 0.29` — a ~30% relative model error accumulated over a 24 h measurement
 interval, which keeps each state's uncertainty band within physically plausible metabolite
 ranges. NIV = 1 is the primary target, but where consistency would demand a larger CV —
-driven by structural model bias, chiefly **glucose** (its NIV=1 band climbed toward ~200 mM
+driven by structural model bias, chiefly **glucose** (its NIV=1 band reached ~1000 mM
 against a ~144 mM feed, i.e. physically impossible) — the state is pinned at the ceiling and
 left **under-dispersed (NIV > 1)**. We deliberately prefer a physically bounded band to a
 statistically consistent but physically impossible one — a bioprocessing constraint that
-trumps the statistical one. Glc pins hardest; **Urd (NIV=1 CV ≈ 0.019) and Lac (≈ 0.011)
-also pin**, tightening their bands at the cost of NIV > 1. Xv, mAb, Gal, Amm converge below
-the cap at NIV ≈ 1; Gln floors (R-driven). (Earlier trials: `CV_MAX = 0.05` let glucose's
-multiplicative noise compound to ~×11 and blow the band to ~1000 mM; `0.02` still reached
-~200 mM.)
+trumps the statistical one. The value 0.006 sits just above mAb's NIV=1 CV (~0.0058), the
+tightest ceiling that still caps only the three genuinely bias-limited states — **Glc, Urd
+(NIV=1 CV ≈ 0.019) and Lac (≈ 0.011)** — while leaving Xv, mAb, Gal, Amm at NIV ≈ 1 (Gln
+floors, R-driven). (The ceiling was lowered through 0.05 → 0.02 → 0.01 → 0.006 as each still
+left glucose's band physically implausible: ~1000, ~200, ~80 mM respectively. IQR-clipping
+glucose's upper tail was also trialled but did not help — the width is bulk multiplicative
+spread, not outliers — so the tighter cap, not clipping, bounds it.)
 
 **Adoption:** the resulting CVs are written into `config.PROCESS_NOISE_CV`, replacing any
 prior hand-tuned values. NIV = 1 is the principled target for an assimilated state; where
@@ -191,12 +193,14 @@ Monte-Carlo run-to-run variability at N = 100.
   than by removing it from the update (which would discard its useful uridine coupling).
 
 **Disclosed limitations (not defects — deliberately not masked):**
-- **Glc — capped** at `CV_MAX = 0.01`, deliberately **under-dispersed (NIV ≫ 1)**. This is
+- **Glc — capped** at `CV_MAX = 0.006`, deliberately **under-dispersed (NIV ≫ 1)**. This is
   **structural model bias** (the glucose submodel is systematically off); forcing NIV = 1
-  would inflate its multiplicative-noise band to ~200–1000 mM against a ~144 mM feed —
+  would inflate its multiplicative-noise band to ~1000 mM against a ~144 mM feed —
   physically impossible. Capped at the physical band-plausibility ceiling and reported as
-  under-dispersed, by design. **Urd and Lac** likewise pin at the cap (their NIV=1 CVs
-  exceed it), trading NIV > 1 for physically sensible bands.
+  under-dispersed, by design. IQR-clipping glucose's upper tail was trialled but did not
+  help (the width is bulk multiplicative spread, not outliers), so the cap bounds it, not
+  clipping. **Urd and Lac** likewise pin at the cap (their NIV=1 CVs exceed it), trading
+  NIV > 1 for physically sensible bands.
 - **Gln — floored** at `CV_MIN` with NIV ≈ 0.38 (over-dispersed). With CV negligible, `S ≈ R`,
   so this reflects `R_Gln` (pooled P1–P4 mean) being conservative for P4, **not** a process-
   noise issue. R is kept from data; the mild over-dispersion is conservative (wider band, the
@@ -247,7 +251,7 @@ stage may be tuned against a frozen output of a superseded configuration.
 
 ```bash
 # Stage 3 — automated measured-state CV calibration on P4 (NIV -> 1)
-./.venv/bin/python scripts/tune_cv.py --dataset P4 --iters 10 --cv-max 0.05 --cv-min 1e-4
+./.venv/bin/python scripts/tune_cv.py --dataset P4 --iters 10 --cv-max 0.006 --cv-min 1e-4
 #   -> results/cv_tuning/{cv_final.json, pkl/cv_tuned_P4.pkl, figures/*}
 #   Adopt the printed CVs into config.PROCESS_NOISE_CV, then:
 

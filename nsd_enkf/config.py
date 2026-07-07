@@ -425,6 +425,9 @@ NO_UPDATE_STATES = []
 # divergence through nonlinear NSD propagation (independent of localization).
 # All intracellular NSDs are clipped; UDP-Gal in particular relies on this in
 # place of localization.
+# (Glc was trialled here to tame its wide band, but clipping the upper tail did not
+# help — the Glc band is bulk multiplicative spread, not outliers — so Glc is bounded
+# by a tighter CV cap instead, not clipping.)
 CLIP_STATES = [
     'UDPGal', 'UDPGalNAc', 'UDPGlc', 'UDPGlcNAc',
     'GDPMan', 'GDPFuc', 'CMPNeu5Ac',

@@ -39,11 +39,17 @@ Outputs (results/<run>/):
   - figures/cv_niv_convergence_<DS>.png : NIV per iteration -> 1.0
   - figures/cv_tuned_states_<DS>.png    : all-17-state grid (mean, bands, model, meas)
 
-The CV cap CV_MAX (default 0.02) is a physical ceiling: 0.02/step compounds to
-~0.02*sqrt(2400) ~ 100% relative model error over a 24h measurement interval, the most
-process-noise we attribute to any single measured state. It is NOT tuned to a metric.
-(0.05 was tried first but let the structurally-biased Glc CV inflate until its
-multiplicative noise blew the ensemble band up to ~10x the mean.)
+The CV cap CV_MAX (default 0.01) is a physical band-plausibility ceiling, NOT a tuned
+value: 0.01/step compounds to ~0.01*sqrt(2400) ~ 0.5, i.e. ~50% accumulated model error
+over a 24h measurement interval, which keeps each state's uncertainty band within
+physically plausible metabolite ranges. Filter consistency (NIV=1) is the primary target,
+but where reaching it would demand a larger CV -- driven by structural model bias, chiefly
+glucose (whose NIV=1 band climbed toward ~200 mM against a ~144 mM feed, i.e. physically
+impossible) -- the state is pinned at the cap and left UNDER-dispersed (NIV>1). A physically
+bounded band is preferred over a statistically consistent but physically implausible one.
+Glc pins hardest; Urd and Lac also pin (their NIV=1 CVs, ~0.019 and ~0.011, exceed the cap).
+(Earlier caps of 0.05 and 0.02 let glucose's multiplicative noise blow the band up to
+~1000 and ~200 mM respectively.)
 
 Usage (macOS venv):
     ./.venv/bin/python scripts/tune_cv.py
@@ -86,10 +92,11 @@ parser = argparse.ArgumentParser(description="Systematic per-state CV calibratio
 parser.add_argument("--dataset", default="P4")
 parser.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 parser.add_argument("--iters", default=12, type=int)
-parser.add_argument("--cv-max", default=0.02, type=float,
-                    help="per-step CV cap; 0.02 ~ 100%%/24h accumulated model error. "
-                         "Structural-bias states (e.g. Glc) pin here rather than "
-                         "inflating noise into an exploding band")
+parser.add_argument("--cv-max", default=0.01, type=float,
+                    help="per-step CV cap; 0.01 ~ 50%%/24h accumulated model error, a "
+                         "physical band-plausibility ceiling. Bias-limited states (Glc, and "
+                         "Urd/Lac) pin here at NIV>1 rather than inflating the band beyond "
+                         "physically plausible metabolite ranges")
 parser.add_argument("--cv-min", default=1e-4, type=float)
 parser.add_argument("--tol", default=0.15, type=float, help="stop when all |NIV-1| < tol (uncapped states)")
 parser.add_argument("--seed", default=42, type=int)

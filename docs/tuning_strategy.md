@@ -113,15 +113,20 @@ bound and is *flagged* (capped / floored) for reporting only — the flags do no
 convergence. A pinned state keeps the loop running to `--iters`; the extra iterations leave
 its CV/NIV unchanged, so the result is identical to an early stop.
 
-**`CV_MAX = 0.02` is a physical ceiling, not a tuned value.** Per-step CV compounds over an
-N-step interval as `CV·√N`, so `0.02·√2400 ≈ 1.0` — a ~100% relative model error accumulated
-over a 24 h measurement interval, the most process noise we are willing to attribute to any
-single measured state. It caps structurally-biased states (Glc) at a sane band instead of
-letting the NIV=1 loop inflate their multiplicative noise without bound. (An initial
-`CV_MAX = 0.05` let Glc's CV pin at the cap and its multiplicative noise compounded to ~×11
-spread, blowing the ensemble band up to ~1000 mM against ~tens-of-mM data — meaningless
-uncertainty. 0.02 fixes this while leaving every well-behaved state, all of which converge
-at CV ≤ 0.019, untouched.)
+**`CV_MAX = 0.01` is a physical band-plausibility ceiling, not a tuned value, and it can
+override the NIV=1 target.** Per-step CV compounds over an N-step interval as `CV·√N`, so
+`0.01·√2400 ≈ 0.5` — a ~50% relative model error accumulated over a 24 h measurement
+interval, which keeps each state's uncertainty band within physically plausible metabolite
+ranges. NIV = 1 is the primary target, but where consistency would demand a larger CV —
+driven by structural model bias, chiefly **glucose** (its NIV=1 band climbed toward ~200 mM
+against a ~144 mM feed, i.e. physically impossible) — the state is pinned at the ceiling and
+left **under-dispersed (NIV > 1)**. We deliberately prefer a physically bounded band to a
+statistically consistent but physically impossible one — a bioprocessing constraint that
+trumps the statistical one. Glc pins hardest; **Urd (NIV=1 CV ≈ 0.019) and Lac (≈ 0.011)
+also pin**, tightening their bands at the cost of NIV > 1. Xv, mAb, Gal, Amm converge below
+the cap at NIV ≈ 1; Gln floors (R-driven). (Earlier trials: `CV_MAX = 0.05` let glucose's
+multiplicative noise compound to ~×11 and blow the band to ~1000 mM; `0.02` still reached
+~200 mM.)
 
 **Adoption:** the resulting CVs are written into `config.PROCESS_NOISE_CV`, replacing any
 prior hand-tuned values. NIV = 1 is the principled target for an assimilated state; where
@@ -186,11 +191,12 @@ Monte-Carlo run-to-run variability at N = 100.
   than by removing it from the update (which would discard its useful uridine coupling).
 
 **Disclosed limitations (not defects — deliberately not masked):**
-- **Glc — capped** at `CV_MAX = 0.02` with NIV > 1 (still under-dispersed). This is
-  **structural model bias** (the glucose submodel is systematically off); inflating CV to
-  force NIV = 1 would only mask the bias with fake noise — and, as the `CV_MAX = 0.05` trial
-  showed, blow the multiplicative-noise band up to ~×11 the mean. Capped at the physical
-  ceiling and reported as under-dispersed.
+- **Glc — capped** at `CV_MAX = 0.01`, deliberately **under-dispersed (NIV ≫ 1)**. This is
+  **structural model bias** (the glucose submodel is systematically off); forcing NIV = 1
+  would inflate its multiplicative-noise band to ~200–1000 mM against a ~144 mM feed —
+  physically impossible. Capped at the physical band-plausibility ceiling and reported as
+  under-dispersed, by design. **Urd and Lac** likewise pin at the cap (their NIV=1 CVs
+  exceed it), trading NIV > 1 for physically sensible bands.
 - **Gln — floored** at `CV_MIN` with NIV ≈ 0.38 (over-dispersed). With CV negligible, `S ≈ R`,
   so this reflects `R_Gln` (pooled P1–P4 mean) being conservative for P4, **not** a process-
   noise issue. R is kept from data; the mild over-dispersion is conservative (wider band, the

@@ -4,6 +4,10 @@ This document records all tuning decisions for the EnKF noise parameters, includ
 the reasoning, data, and diagnostics behind each choice. It serves as a reference
 for the manuscript methods section and for future re-tuning.
 
+> For the clean, self-contained **procedure** (ordered stages, criteria, dependencies,
+> reproduce commands), see [`tuning_strategy.md`](tuning_strategy.md). This file is the
+> chronological *log* (what was tried, superseded, and why); that file is the *method*.
+
 **Current configuration (as of 2026-07-01):**
 - **Measured-state process noise:** per-state multiplicative CVs (tuned_v6 values,
   git `1adfc95`), still adopted in `config.py`. An automated re-calibration
@@ -440,14 +444,37 @@ inflated noise).
   structural glucose bias (Section 4). Left at the cap by design.
 - **Gln** is over-dispersed at the CV floor. With CV already negligible, `S ~ R`, so the
   residual over-dispersion is driven by `R_Gln` (7.35e-3), not by process noise, and
-  cannot be removed by lowering CV further. Because it is floored (not capped) it never
-  satisfies the convergence tolerance, so the loop runs to the iteration cap. This flags
-  `R_Gln` as likely overestimated for P4.
+  cannot be removed by lowering CV further. This flags `R_Gln` (pooled P1-P4 mean) as
+  likely overestimated for P4.
 
-### Status
-These automated CVs are **not yet adopted** into `config.py`, which still carries the
-tuned_v6 values. Adoption is pending (i) resolving the Gln floor / `R_Gln` question and
-(ii) confirming 2-sigma coverage does not regress relative to tuned_v6 — the automated
-loop optimises NIV only, whereas the manual tuning balanced NIV against coverage (e.g.
-Urd was deliberately held at CV=0.006 despite NIV=2.22, while the automated loop raises
-it to 0.019).
+> **Note:** the iteration-8 checkpoint above predates the convergence fix below and will
+> be regenerated on the next run.
+
+### Termination (general, no per-state special-casing)
+The fixed point iterates until all `|NIV-1| < tol`, or a maximum number of iterations
+(`--iters`) is reached. There is **no bound-based exclusion** from the convergence test:
+a state that cannot reach NIV=1 (Glc capped at `CV_MAX` by structural glucose bias; Gln
+floored at `CV_MIN`, R-dominated) simply keeps the loop running to `--iters`, at which
+point it stays pinned at its bound. The extra iterations leave the pinned CV/NIV
+unchanged, so the final CVs are identical to stopping early — running to the cap is the
+expected, honest behaviour when a state is genuinely un-tunable to NIV=1. The
+`capped`/`floored` flags are recorded for reporting (tables, plots, JSON) only.
+
+### Artifacts (per run, `results/<run>/`)
+`tune_cv.py` now saves, at the final CVs: `pkl/cv_tuned_<DS>.pkl` (all-17-state mean +
+std trajectories, ±1σ/±2σ bands, and the open-loop model trajectory),
+`figures/cv_niv_convergence_<DS>.png` (NIV→1 per iteration), and
+`figures/cv_tuned_states_<DS>.png` (all-state grid: EnKF mean + bands + model + meas).
+
+### Status — adopting the automated pipeline
+Decision (2026-07-07): the tuning pipeline must be **reproducible from data end-to-end**
+for the manuscript, with no dependency on the hand-tuned tuned_v6 values. The automated
+NIV=1 calibration replaces the manual 4-round tuning as the measured-state procedure.
+NIV=1 is the principled target for an *assimilated* state; where manual tuning deviated
+from it to protect coverage (e.g. Urd held at CV=0.006 despite NIV=2.22, vs auto 0.019),
+the automated value is the more defensible one. 2σ coverage is still **reported** as a
+validation diagnostic (not a selection criterion), and the `R_Gln` over-estimate is
+disclosed as a transparent limitation rather than fudged. Because changing the measured
+CVs changes the cross-covariance flow into the NSDs, **the universal NSD alpha must be
+re-swept on the adopted CVs** (Section 10) — the current alpha=0.01 was optimised against
+tuned_v6 and is not carried over unchanged.

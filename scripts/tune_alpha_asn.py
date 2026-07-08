@@ -4,12 +4,14 @@ tune_alpha_asn.py
 Sweep the additive process-noise scalar for ASN ONLY, on P4, and report Asn tracking
 and uncertainty diagnostics. This is a focused, Asn-only look — the NSD alpha is NOT
 swept here because the NSD pathway is DOWNSTREAM of Asn (NSDs do not feed back into Asn
-dynamics), so Asn's calibration is independent of the NSD alpha. NSDs and Glu keep their
-config alphas; only Asn's additive variance changes:
+dynamics), so Asn's calibration is independent of the NSD alpha. NSDs keep their config
+alpha; the two observable states are ONE tier (config PROCESS_NOISE_ALPHA_OBS), so Asn AND
+Glu both take the swept alpha:
 
-    Q_Asn = (alpha_asn * scale_Asn)^2
+    Q_i = (alpha_obs * scale_i)^2      for i in {Asn, Glu}
 
-Asn is measured but held out of the EnKF update, so we score directly against the Asn
+Only Asn is scored (Glu is never measured). Asn is measured but held out of the update,
+so we score directly against the Asn
 measurements: RMSE, NRMSE (RMSE / mean measurement), 2-sigma coverage, and spread-skill
 (mean std / RMSE, ideal ~1). Measured states use the adopted multiplicative CVs
 (config.PROCESS_NOISE_CV). Nothing is auto-adopted — this prints/plots for inspection.
@@ -70,8 +72,9 @@ PKL_DIR = RESULTS_DIR / "pkl"; FIG_DIR = RESULTS_DIR / "figures"
 PKL_DIR.mkdir(parents=True, exist_ok=True); FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 print("=" * 70)
-print(f"Asn alpha sweep on {DS}  (N={ENS}, alphas={ALPHAS})")
-print("NSD alpha held fixed (NSDs are downstream of Asn — no feedback); Glu fixed.")
+print(f"Observable-tier alpha sweep on {DS}  (N={ENS}, alphas={ALPHAS})")
+print("Asn AND Glu share the swept alpha; NSD alpha held fixed (downstream of Asn).")
+print("Only Asn is scored (Glu has no measurements).")
 print("=" * 70)
 
 # ── Grids / fixed matrices ───────────────────────────────────────────────────
@@ -90,20 +93,19 @@ process_noise_cv = {cfg.STATE_NAMES.index(s): cv for s, cv in cfg.PROCESS_NOISE_
 no_update_indices = {cfg.STATE_NAMES.index(s) for s in cfg.NO_UPDATE_STATES}
 clip_indices = {cfg.STATE_NAMES.index(s) for s in cfg.CLIP_STATES}
 
-# Base additive variance from config (two-stage alpha); Asn is overridden per sweep value.
+# NSDs stay at the config NSD alpha (they are downstream of Asn — no feedback). The two
+# observable states are one tier (config PROCESS_NOISE_ALPHA_OBS), so Asn AND Glu both take
+# the swept alpha. Only Asn is scored below (Glu is never measured).
 scale_vec = np.zeros(cfg.STATE_NUM)
 for s, sc in cfg.PROCESS_NOISE_SCALE.items():
     scale_vec[cfg.STATE_NAMES.index(s)] = sc
-ALPHA_OBS = getattr(cfg, "PROCESS_NOISE_ALPHA_OBS", 0.0)
-obs_idx = [cfg.STATE_NAMES.index(s) for s in getattr(cfg, "ALPHA_OBS_STATES", [])]
-base_alpha = np.full(cfg.STATE_NUM, cfg.PROCESS_NOISE_ALPHA)
-for i in obs_idx:
-    base_alpha[i] = ALPHA_OBS
+obs_idx = [cfg.STATE_NAMES.index(s) for s in getattr(cfg, "ALPHA_OBS_STATES", ["Asn", "Glu"])]
 ASN = cfg.STATE_NAMES.index("Asn")
 
-def var_model_for(alpha_asn):
-    a = base_alpha.copy()
-    a[ASN] = alpha_asn
+def var_model_for(alpha_obs):
+    a = np.full(cfg.STATE_NUM, cfg.PROCESS_NOISE_ALPHA)   # NSDs at config alpha
+    for i in obs_idx:                                     # Asn AND Glu share the swept alpha
+        a[i] = alpha_obs
     return (a * scale_vec) ** 2
 
 P0_meas = np.array([cfg.MEASUREMENT_NOISE_VAR.get(s, 0.0) for s in cfg.STATE_NAMES])
@@ -125,8 +127,8 @@ T_meas = np.array(cfg.T_MEAS_FIXED)
 meas_grid_idx = [min(int(round(t / dt_kf)) + 1, N_kf) for t in T_meas]   # post-update
 
 
-def run_pass(alpha_asn):
-    var_model = var_model_for(alpha_asn)
+def run_pass(alpha_obs):
+    var_model = var_model_for(alpha_obs)
     P0_diag = var_model.copy()
     P0_diag[:cfg.MEAS_NUM] = P0_meas[:cfg.MEAS_NUM]
     np.random.seed(args.seed)
@@ -162,7 +164,7 @@ for a in ALPHAS:
     results[a] = met
     with open(PKL_DIR / f"asn_alpha_{a:g}.pkl", "wb") as f:
         pickle.dump({
-            "dataset": DS, "alpha_asn": a, "state": "Asn", "T": T_model,
+            "dataset": DS, "alpha_obs": a, "state": "Asn", "T": T_model,
             "mean_trajectory": mt[:, ASN], "std_trajectory": st[:, ASN],
             "band_1sigma_lo": np.maximum(mt[:, ASN] - st[:, ASN], 0.0),
             "band_1sigma_hi": mt[:, ASN] + st[:, ASN],
@@ -233,7 +235,7 @@ if not args.no_plots:
     axs[2].plot(al, [results[a]["ss"] for a in al], "^-", color="tab:green")
     axs[2].axhline(1.0, ls=":", color="gray"); axs[2].set_title("spread-skill std/RMSE (target ~1)")
     for ax in axs:
-        ax.set_xlabel("alpha_asn"); ax.set_xscale("log"); ax.grid(alpha=0.2)
+        ax.set_xlabel("alpha_obs (Asn & Glu)"); ax.set_xscale("log"); ax.grid(alpha=0.2)
     fig.suptitle(f"Asn metrics vs alpha — {DS}", fontsize=13, fontweight="bold")
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(FIG_DIR / "asn_metrics_vs_alpha.png", dpi=150)

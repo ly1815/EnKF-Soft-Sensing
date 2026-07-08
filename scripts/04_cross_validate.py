@@ -53,6 +53,9 @@ comparison is assembled from whatever mode summaries are already on disk:
   # day 2 — mode B (~14 h); also emits the A-vs-B comparison since A is on disk:
   caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune all \
       2>&1 | tee results/cross_validation/run_all.log
+  # Finer still — ONE fold per run (mode A single fold ~1.6 h), any order, accumulating:
+  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv --train P4
+  #   then --train P1, --train P2, --train P3 (separate runs -> same summary.json)
   # (--retune both runs A+B in one ~20 h shot; --resume continues an interrupted run)
   # quick structural preview (small N, few iters) — NOT for real results:
   ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune cv \
@@ -90,6 +93,10 @@ from nsd_enkf.enkf import EnsembleKalmanFilter, run_enkf_single_with_ensemble_di
 p = argparse.ArgumentParser(description="Generalized full-fold cross-validation of the tuning procedure")
 p.add_argument("--folds", default="P1,P2,P3,P4", help="datasets participating in the CV")
 p.add_argument("--scheme", default="rotate", choices=["rotate", "loo"])
+p.add_argument("--train", default=None,
+               help="run ONLY the single fold that trains on THIS dataset (validate on all "
+                    "others). Lets you break the CV into one short ~1.6h run at a time, any "
+                    "order; folds accumulate into the same summary.json across runs.")
 p.add_argument("--retune", default="cv", choices=["cv", "all", "both"],
                help="cv=A (~6.6h), all=B (~14h), both=one shot (~20h). Run 'cv' and 'all' "
                     "on separate days — the A-vs-B comparison is built from whatever is on disk.")
@@ -320,6 +327,10 @@ def select_alphas(train_list, cv_idx):
 
 # ── Fold construction ─────────────────────────────────────────────────────────
 def folds():
+    if args.train:
+        if args.train not in DATASETS:
+            raise SystemExit(f"--train {args.train} must be one of --folds {DATASETS}")
+        return [(args.train, [args.train], [x for x in DATASETS if x != args.train])]
     if args.scheme == "rotate":
         return [(d, [d], [x for x in DATASETS if x != d]) for d in DATASETS]
     return [(d, [x for x in DATASETS if x != d], [d]) for d in DATASETS]  # loo
@@ -329,7 +340,9 @@ def run_mode(mode):
     out_dir = RESULTS_DIR / mode
     (out_dir / "figures").mkdir(parents=True, exist_ok=True)
     summ_path = out_dir / "summary.json"
-    summary = json.load(open(summ_path)) if (args.resume and summ_path.exists()) else {"scheme": args.scheme, "mode": mode, "folds": {}}
+    # Always load an existing summary so single-fold (--train) runs ACCUMULATE across days;
+    # --resume additionally skips folds already present (below) instead of recomputing them.
+    summary = json.load(open(summ_path)) if summ_path.exists() else {"scheme": args.scheme, "mode": mode, "folds": {}}
 
     for fid, train_list, val_list in folds():
         if args.resume and fid in summary["folds"]:

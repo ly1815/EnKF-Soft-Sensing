@@ -103,8 +103,10 @@ mean/std trajectories with uncertainty bands (`results/<run>/pkl/`) and figures
 caffeinate -i ./.venv/bin/python scripts/01_tune_cv.py --dataset P4
 caffeinate -i ./.venv/bin/python scripts/02_tune_alpha_asn.py
 caffeinate -i ./.venv/bin/python scripts/03_tune_alpha_nsd.py
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune cv   # mode A (~6.6h)
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune all  # mode B (~14h); emits A-vs-B
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv   # mode A (~6.6h)
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune all  # mode B (~14h); emits A-vs-B
+# or break it into one short fold per run (accumulates into the same summary):
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv --train P4   # ~1.6h; then --train P1/P2/P3
 caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py
 ```
 

@@ -478,6 +478,24 @@ bound each state's band to a physically plausible range rather than to enforce c
 
 One global cap, no per-state special-casing.
 
+### Adopted CVs (2026-07-08, cap 0.006)
+The automated CVs are now in `config.PROCESS_NOISE_CV`, replacing the tuned_v6 hand values:
+
+| State | CV | NIV | Status |
+|-------|------|------|--------|
+| Xv  | 0.0056 | 1.00 | well-calibrated |
+| mAb | 0.0056 | 1.00 | well-calibrated |
+| Gal | 0.0051 | 1.00 | well-calibrated |
+| Urd | 0.0060 | 2.29 | capped (structural bias) |
+| Glc | 0.0060 | 8.21 | capped (structural bias) |
+| Amm | 0.0060 | 1.16 | capped (structural bias) |
+| Gln | 0.0028 | 1.00 | well-calibrated (no floor at cap 0.006) |
+| Lac | 0.0060 | 3.17 | capped (structural bias) |
+
+Stage 4 (NSD alpha) will be re-swept on these CVs. Asn's observable alpha is examined
+separately first (`scripts/tune_alpha_asn.py`) — the NSD pathway is downstream of Asn, so
+Asn's calibration is independent of the NSD alpha.
+
 ### Artifacts (per run, `results/<run>/`)
 `tune_cv.py` now saves, at the final CVs: `pkl/cv_tuned_<DS>.pkl` (all-17-state mean +
 std trajectories, ±1σ/±2σ bands, and the open-loop model trajectory),

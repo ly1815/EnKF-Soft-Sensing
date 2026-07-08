@@ -335,15 +335,18 @@ NMAB_CMPNEU5AC = 0.155e-6
 # CV values are per-step (dt=0.01h). They compound as cv*sqrt(N_steps) between
 # measurement updates (~2400 steps = 24h apart), so 0.002/step ≈ 10% between updates.
 PROCESS_NOISE_CV = {
-    # Measured extracellular — tuned per-state on P4 via NIV and 2σ coverage
-    'Xv':  0.005,   # NIV=0.70, Cov=75%
-    'mAb': 0.007,   # NIV=0.36, Cov=88%
-    'Gal': 0.004,   # NIV=1.05, Cov=88%
-    'Urd': 0.006,   # NIV=2.22, Cov=94%  (HPLC: high NIV from precise measurements)
-    'Glc': 0.008,   # NIV=5.81, Cov=75%  (structural model bias, Option A)
-    'Amm': 0.006,   # NIV=1.09, Cov=88%
-    'Gln': 0.003,   # NIV=0.80, Cov=94%
-    'Lac': 0.007,   # NIV=1.60, Cov=100%
+    # Automated NIV=1 calibration on P4 (scripts/tune_cv.py, cap CV_MAX=0.006). States at
+    # the cap are structural-bias-limited and left deliberately under-dispersed — the
+    # physical band-plausibility ceiling overrides NIV=1 (see docs/tuning_strategy.md
+    # Stage 3 and tuning_log.md Section 12).
+    'Xv':  0.0056,  # NIV=1.00
+    'mAb': 0.0056,  # NIV=1.00
+    'Gal': 0.0051,  # NIV=1.00
+    'Urd': 0.0060,  # capped (structural bias, NIV=2.29)
+    'Glc': 0.0060,  # capped (structural bias, NIV=8.21)
+    'Amm': 0.0060,  # capped (structural bias, NIV=1.16)
+    'Gln': 0.0028,  # NIV=1.00
+    'Lac': 0.0060,  # capped (structural bias, NIV=3.17)
 }
 
 # ── Universal additive-noise scaling for unmeasured states (Option B) ────────

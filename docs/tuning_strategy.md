@@ -261,7 +261,7 @@ stage may be tuned against a frozen output of a superseded configuration.
 #   Adopt the printed CVs into config.PROCESS_NOISE_CV, then:
 
 # Stage 4 — re-sweep NSD alpha on the adopted CVs (NRMSE), save bands/figures for all states
-./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune both
+./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune cv    # mode A; then --retune all for B
 #   -> results/option_b/{pkl/option_b_*.pkl, figures/option_b_*.png, summary}
 #   Adopt PROCESS_NOISE_ALPHA = <selected> into config, then:
 

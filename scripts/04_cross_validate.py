@@ -44,15 +44,19 @@ Runtime (N=100, ~9 min/EnKF pass):
   rotate, retune=all : + alpha grids per fold             ~= 92 passes ~= 14 h
   both               : ~= 20 h  -> run with caffeinate, --resume friendly
 
-Usage (macOS venv):
+Usage (macOS venv) — run A and B on SEPARATE days to keep each run short; the A-vs-B
+comparison is assembled from whatever mode summaries are already on disk:
   mkdir -p results/cross_validation
-  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune both \
-      2>&1 | tee results/cross_validation/run.log
-  # resume after an interruption:
-  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune both --resume
+  # day 1 — mode A (~6.6 h):
+  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune cv \
+      2>&1 | tee results/cross_validation/run_cv.log
+  # day 2 — mode B (~14 h); also emits the A-vs-B comparison since A is on disk:
+  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune all \
+      2>&1 | tee results/cross_validation/run_all.log
+  # (--retune both runs A+B in one ~20 h shot; --resume continues an interrupted run)
   # quick structural preview (small N, few iters) — NOT for real results:
   ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune cv \
-      --folds P4 --ensemble-size 15 --cv-iters 2 --no-plots
+      --folds P3,P4 --ensemble-size 15 --cv-iters 2 --no-plots
 """
 
 import argparse
@@ -86,7 +90,9 @@ from nsd_enkf.enkf import EnsembleKalmanFilter, run_enkf_single_with_ensemble_di
 p = argparse.ArgumentParser(description="Generalized full-fold cross-validation of the tuning procedure")
 p.add_argument("--folds", default="P1,P2,P3,P4", help="datasets participating in the CV")
 p.add_argument("--scheme", default="rotate", choices=["rotate", "loo"])
-p.add_argument("--retune", default="both", choices=["cv", "all", "both"])
+p.add_argument("--retune", default="cv", choices=["cv", "all", "both"],
+               help="cv=A (~6.6h), all=B (~14h), both=one shot (~20h). Run 'cv' and 'all' "
+                    "on separate days — the A-vs-B comparison is built from whatever is on disk.")
 p.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 p.add_argument("--cv-iters", default=8, type=int, help="max CV fixed-point iterations per fold")
 p.add_argument("--cv-max", default=0.006, type=float)
@@ -366,8 +372,17 @@ def run_mode(mode):
     return summary
 
 
-# ── Run ────────────────────────────────────────────────────────────────────
-all_summ = {m: run_mode(m) for m in MODES}
+# ── Run the requested mode(s) ────────────────────────────────────────────────
+for m in MODES:
+    run_mode(m)
+
+# Load EVERY mode summary present on disk (so A and B run on separate days still compare).
+all_summ = {}
+for m in ("cv", "all"):
+    sp = RESULTS_DIR / m / "summary.json"
+    if sp.exists():
+        all_summ[m] = json.load(open(sp))
+present = [m for m in ("cv", "all") if m in all_summ]
 
 # ── Report ─────────────────────────────────────────────────────────────────
 def held_agg(summary):
@@ -381,19 +396,21 @@ def held_agg(summary):
     return (np.nanmean(nrmse), np.nanmean(cov), np.nanmean(asn))
 
 print("\n" + "=" * 78)
-for m in MODES:
+for m in present:
     nr, cv_, asn = held_agg(all_summ[m])
     lbl = "A (CVs only)" if m == "cv" else "B (CVs + alpha)"
     print(f"  retune={m:3s} [{lbl}]  held-out mean NSD NRMSE={nr:.3f}  cov={cv_:.0f}%  Asn NRMSE={asn:.3f}")
 print("=" * 78)
-if len(MODES) == 2:
-    comp = {m: dict(zip(("nsd_nrmse", "nsd_cov", "asn_nrmse"), held_agg(all_summ[m]))) for m in MODES}
+if len(present) == 2:
+    comp = {m: dict(zip(("nsd_nrmse", "nsd_cov", "asn_nrmse"), held_agg(all_summ[m]))) for m in present}
     json.dump(comp, open(RESULTS_DIR / "comparison.json", "w"), indent=2)
-    print(f"Comparison written: {RESULTS_DIR / 'comparison.json'}")
+    print(f"A-vs-B comparison written: {RESULTS_DIR / 'comparison.json'}")
+else:
+    print(f"(Run the other mode later to get the A-vs-B comparison; have: {present})")
 
 # ── Plots ────────────────────────────────────────────────────────────────
 if not args.no_plots:
-    for m in MODES:
+    for m in present:
         S = all_summ[m]; fids = list(S["folds"].keys())
         # parameter stability: CV per measured state across folds
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -418,10 +435,10 @@ if not args.no_plots:
         fig.tight_layout(rect=[0, 0, 1, 0.95])
         fig.savefig(RESULTS_DIR / m / "figures" / "cv_heldout_metrics.png", dpi=150); plt.close(fig)
 
-    if len(MODES) == 2:
+    if len(present) == 2:
         fig, ax = plt.subplots(figsize=(7, 5))
         labels = ["mean NSD NRMSE", "mean NSD cov %/100", "Asn NRMSE"]
-        for m in MODES:
+        for m in present:
             nr, cv_, asn = held_agg(all_summ[m])
             ax.plot(labels, [nr, cv_ / 100, asn], "o-", label=f"retune={m}")
         ax.set_title(f"A vs B held-out (scheme={args.scheme})"); ax.legend(); ax.grid(alpha=0.2)

@@ -8,8 +8,9 @@
 # PDFs
 *.pdf
 
-# Claude Code project file
+# Claude Code project file + personal local settings (e.g. auto-push-figures hook)
 CLAUDE.md
+.claude/settings.local.json
 
 # Poster / one-off plotting scripts
 plot_poster_*.py

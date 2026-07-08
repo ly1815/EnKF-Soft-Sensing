@@ -1,10 +1,10 @@
 """
-tune_alpha_nsd.py
-=================
+03_tune_alpha_nsd.py  —  Stage 4b: NSD alpha (band inspection)
+==============================================================
 Sweep the NSD additive process-noise scalar (PROCESS_NOISE_ALPHA) on P4 and show, for each
 alpha, the 7 NSD uncertainty bands against the NSD measurements — the NSD analogue of
 tune_alpha_asn.py. This is for choosing the NSD alpha by inspection (bands + metrics), NOT
-auto-selecting by argmin-NRMSE (cf. run_option_b.py, which auto-picks and plots only the
+auto-selecting by argmin-NRMSE (cf. 04_cross_validate.py, which auto-picks and plots only the
 winner).
 
 Only the 7 NSD states take the swept alpha; the observable Asn/Glu keep their calibrated
@@ -22,8 +22,8 @@ Outputs (results/<run>/):
 
 Usage (macOS venv):
     mkdir -p results/alpha_nsd
-    caffeinate -i ./.venv/bin/python scripts/tune_alpha_nsd.py 2>&1 | tee results/alpha_nsd/sweep.log
-    ./.venv/bin/python scripts/tune_alpha_nsd.py --replot         # redraw from existing pkls
+    caffeinate -i ./.venv/bin/python scripts/03_tune_alpha_nsd.py 2>&1 | tee results/alpha_nsd/sweep.log
+    ./.venv/bin/python scripts/03_tune_alpha_nsd.py --replot         # redraw from existing pkls
 """
 
 import argparse

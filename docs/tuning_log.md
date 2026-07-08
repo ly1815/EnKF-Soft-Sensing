@@ -11,7 +11,7 @@ for the manuscript methods section and for future re-tuning.
 **Current configuration (as of 2026-07-01):**
 - **Measured-state process noise:** per-state multiplicative CVs (tuned_v6 values,
   git `1adfc95`), still adopted in `config.py`. An automated re-calibration
-  (`scripts/tune_cv.py`) is in progress — see Section 12.
+  (`scripts/01_tune_cv.py`) is in progress — see Section 12.
 - **Unmeasured-state process noise:** a single universal two-stage additive scalar —
   `PROCESS_NOISE_ALPHA = 0.01` (7 NSDs) and `PROCESS_NOISE_ALPHA_OBS = 0.002`
   (Asn, Glu). This "Option B" scheme supersedes the hand-picked per-state Q of
@@ -328,7 +328,7 @@ as a model fidelity limitation.
 | tuned_v5 | IQR clipping + localization (all NSDs) | `7ad9e26` |
 | tuned_v6 | Selective localization (UDPGal only) | `1adfc95` |
 | option_b | Universal two-stage additive alpha (0.01 NSD / 0.001 Asn,Glu); localization removed (clip only) | `4e2bcf8` |
-| cv_auto | Automated NIV=1 CV fixed-point (`scripts/tune_cv.py`); **in progress, not yet adopted** | `results/cv_tuning/` |
+| cv_auto | Automated NIV=1 CV fixed-point (`scripts/01_tune_cv.py`); **in progress, not yet adopted** | `results/cv_tuning/` |
 
 ---
 
@@ -364,7 +364,7 @@ independent of any single validation dataset.
   corrections, so they need far less injected noise. A single-tier alpha (same value
   everywhere) put too much noise on Asn (git `4e2bcf8`, "one tier noise too big for
   asn"), motivating the split. ALPHA_OBS is calibrated *separately* from the NSD alpha via
-  an Asn-only sweep (`scripts/tune_alpha_asn.py`) — the NSD pathway is downstream of Asn (no
+  an Asn-only sweep (`scripts/02_tune_alpha_asn.py`) — the NSD pathway is downstream of Asn (no
   feedback), so Asn's calibration is independent of the NSD alpha. Asn and Glu share the
   swept value; only Asn is scored (Glu is never measured). P4 sweep (0.001–0.01), Asn:
   0.001 → NRMSE 0.34 / cov 24% / ss 0.22; **0.002 → NRMSE 0.40 / cov 59% / ss 0.37 (adopted)**;
@@ -391,12 +391,12 @@ grows ~ alpha*scale*sqrt(N), so a per-24h relative uncertainty beta corresponds 
 alpha = beta / sqrt(2400). The NSD alpha is selected on P4 by minimising the mean NSD
 NRMSE (RMSE / mean measurement — dimensionless, so states of very different magnitude
 are comparable), then cross-validated on P1-P3. Selected value: **alpha = 0.01** (git
-`4e2bcf8`). Scripts: `scripts/tune_alpha.py` (sweep + cross-validation) and
-`scripts/run_option_b.py` (sweep + save mean/std bands for all 17 states; run stored in
+`4e2bcf8`). Scripts: `scripts/legacy/tune_alpha.py` (sweep + cross-validation) and
+`scripts/legacy/run_option_b.py` (sweep + save mean/std bands for all 17 states; run stored in
 `results/ob_wide/`).
 
 ### Re-sweep on the adopted CVs (2026-07-08)
-The NSD alpha was **re-swept on the adopted CVs** (cap 0.006) with `scripts/tune_alpha_nsd.py`
+The NSD alpha was **re-swept on the adopted CVs** (cap 0.006) with `scripts/03_tune_alpha_nsd.py`
 (P4, grid 0.005–0.04), so it no longer inherits its value from the superseded tuned_v6 CVs.
 **alpha = 0.01 is confirmed.** Aggregate over the 7 NSDs: mean NRMSE 1.28→1.33→1.42 across
 0.005/0.01/0.02, so 0.01 is within a hair of the accuracy optimum while coverage rises
@@ -435,7 +435,7 @@ keeps a useful measurement-informed correction instead of evolving open-loop.
 ## 12. Automated CV Calibration (in progress)
 
 The manual 4-round per-state CV tuning of Section 4 has been replaced by an automated
-fixed-point calibration, `scripts/tune_cv.py`. Each measured state's per-step CV is
+fixed-point calibration, `scripts/01_tune_cv.py`. Each measured state's per-step CV is
 driven to filter consistency (NIV = 1) by the fixed-point update
 
     CV_j  <-  CV_j * sqrt(NIV_j)
@@ -512,11 +512,11 @@ The automated CVs are now in `config.PROCESS_NOISE_CV`, replacing the tuned_v6 h
 | Lac | 0.0060 | 3.17 | capped (structural bias) |
 
 Stage 4 (NSD alpha) will be re-swept on these CVs. Asn's observable alpha is examined
-separately first (`scripts/tune_alpha_asn.py`) — the NSD pathway is downstream of Asn, so
+separately first (`scripts/02_tune_alpha_asn.py`) — the NSD pathway is downstream of Asn, so
 Asn's calibration is independent of the NSD alpha.
 
 ### Artifacts (per run, `results/<run>/`)
-`tune_cv.py` now saves, at the final CVs: `pkl/cv_tuned_<DS>.pkl` (all-17-state mean +
+`01_tune_cv.py` now saves, at the final CVs: `pkl/cv_tuned_<DS>.pkl` (all-17-state mean +
 std trajectories, ±1σ/±2σ bands, and the open-loop model trajectory),
 `figures/cv_niv_convergence_<DS>.png` (NIV→1 per iteration), and
 `figures/cv_tuned_states_<DS>.png` (all-state grid: EnKF mean + bands + model + meas).

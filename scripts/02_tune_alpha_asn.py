@@ -1,7 +1,7 @@
 """
-tune_alpha_asn.py
-=================
-Sweep the additive process-noise scalar for ASN ONLY, on P4, and report Asn tracking
+02_tune_alpha_asn.py  —  Stage 4a: observable-tier alpha (Asn & Glu)
+====================================================================
+Sweep the shared observable-tier additive-noise alpha (Asn & Glu) on P4, scored on Asn,
 and uncertainty diagnostics. This is a focused, Asn-only look — the NSD alpha is NOT
 swept here because the NSD pathway is DOWNSTREAM of Asn (NSDs do not feed back into Asn
 dynamics), so Asn's calibration is independent of the NSD alpha. NSDs keep their config
@@ -22,8 +22,8 @@ Outputs (results/<run>/):
   figures/asn_metrics_vs_alpha.png   : NRMSE / coverage / spread-skill vs alpha
 
 Usage (macOS venv):
-    caffeinate -i ./.venv/bin/python scripts/tune_alpha_asn.py
-    ./.venv/bin/python scripts/tune_alpha_asn.py --alphas 0.001,0.002,0.004,0.006,0.008,0.01
+    caffeinate -i ./.venv/bin/python scripts/02_tune_alpha_asn.py
+    ./.venv/bin/python scripts/02_tune_alpha_asn.py --alphas 0.001,0.002,0.004,0.006,0.008,0.01
 """
 
 import argparse

@@ -1,6 +1,6 @@
 """
-tune_cv.py
-==========
+01_tune_cv.py  —  Stage 3: measured-state CV calibration (NIV = 1)
+=================================================================
 Automated, systematic calibration of the 8 measured-state multiplicative CVs on P4.
 
 Each measured state's per-step CV is chosen so that its normalised innovation
@@ -53,9 +53,9 @@ Glc pins hardest; Urd and Lac also pin (their NIV=1 CVs, ~0.019 and ~0.011, exce
 ~1000 and ~200 mM respectively.)
 
 Usage (macOS venv):
-    ./.venv/bin/python scripts/tune_cv.py
-    ./.venv/bin/python scripts/tune_cv.py --iters 10 --cv-max 0.02
-    ./.venv/bin/python scripts/tune_cv.py --resume        # continue from checkpoint
+    ./.venv/bin/python scripts/01_tune_cv.py
+    ./.venv/bin/python scripts/01_tune_cv.py --iters 10 --cv-max 0.02
+    ./.venv/bin/python scripts/01_tune_cv.py --resume        # continue from checkpoint
 """
 
 import argparse

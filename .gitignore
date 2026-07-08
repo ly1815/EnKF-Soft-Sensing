@@ -8,6 +8,10 @@
 # PDFs
 *.pdf
 
+# Console run logs and one-off binaries (kept on disk, not in git)
+*.log
+*.pptx
+
 # Claude Code project file + personal local settings (e.g. auto-push-figures hook)
 CLAUDE.md
 .claude/settings.local.json

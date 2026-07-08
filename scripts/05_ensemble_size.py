@@ -1,6 +1,6 @@
 """
-ensemble_size_sensitivity.py
-============================
+05_ensemble_size.py  —  Stage 5: ensemble-size sensitivity / verification
+=========================================================================
 Ensemble-size sensitivity + calibration diagnostics on P4, using the CURRENT
 production filter configuration (self-contained — no dependency on prior runs).
 
@@ -26,13 +26,13 @@ run left off (per-size pkl holds the runs done so far), so a kill costs <=1 pass
 
 Usage:
     # Recommended overnight run (drops N=300; full 10 seeds) -- ~8.4 h wall time:
-    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens
+    ./.venv/bin/python scripts/05_ensemble_size.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens
 
     # Full default sweep incl. N=300 -- ~12.6 h:
-    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --n-runs 10 --run ensemble_sens
+    ./.venv/bin/python scripts/05_ensemble_size.py --n-runs 10 --run ensemble_sens
 
     # Resume a killed/interrupted run (each size is saved as it finishes):
-    ./.venv/Scripts/python.exe scripts/ensemble_size_sensitivity.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens --resume
+    ./.venv/bin/python scripts/05_ensemble_size.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens --resume
 
 Runtime (measured, scales ~linearly with N): ~8.4 min per pass at N=100, so total
 wall time ~= 5.05 s * (sum of sizes / 100) * n_runs. Uses the current config.py

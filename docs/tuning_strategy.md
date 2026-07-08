@@ -20,11 +20,11 @@ The chronological decision history (what was tried, superseded, and why) lives i
 | **R** (measurement noise) | Biological triplicate error-bar variance, pooled P1–P4 | — (from data) | `config.MEASUREMENT_NOISE_VAR` | No — fixed from data |
 | **P0** (initial ensemble cov) | Measured = R; unmeasured = process-noise variance | — | `config.INITIAL_COV_OVERRIDE` | No — derived |
 | **Noise model** | Measured → multiplicative CV; unmeasured → additive | — (structural) | `enkf.py` | No — by design |
-| **Measured CVs** (8) | Fixed-point `CV ← CV·√NIV` to filter consistency | **NIV = 1** | `scripts/tune_cv.py` | **Yes — automated** |
-| **NSD α** (1 scalar, 7 states) | Sweep; minimise mean NSD NRMSE | **min NRMSE**; band validated by coverage/spread-skill | `scripts/tune_alpha.py`, `run_option_b.py` | **Yes — swept** |
+| **Measured CVs** (8) | Fixed-point `CV ← CV·√NIV` to filter consistency | **NIV = 1** | `scripts/01_tune_cv.py` | **Yes — automated** |
+| **NSD α** (1 scalar, 7 states) | Sweep; minimise mean NSD NRMSE + band inspection | **min NRMSE**; band validated by coverage/spread-skill | `scripts/03_tune_alpha_nsd.py` (+ `04_cross_validate.py`) | **Yes — swept** |
 | **α_OBS** (Asn, Glu) | Asn-only sweep on P4 (Asn & Glu share it) | Asn NRMSE + coverage | `config.PROCESS_NOISE_ALPHA_OBS` | Yes — Asn sweep |
 | **IQR clipping** | 7 NSDs clipped to `[1e-12, Q3+5·IQR]` after predict/update | — (stability) | `config.CLIP_STATES` | No — structural |
-| **Ensemble size N** | Sensitivity sweep on final config | NIS, coverage, spread-skill vs N | `scripts/ensemble_size_sensitivity.py` | Verification |
+| **Ensemble size N** | Sensitivity sweep on final config | NIS, coverage, spread-skill vs N | `scripts/05_ensemble_size.py` | Verification |
 
 **Two tunable knobs, two different criteria — and the asymmetry is the whole point:**
 - **Measured states are *assimilated*** → a *consistency* target (NIV = 1) is both available
@@ -93,7 +93,7 @@ proportional to a fixed climatological covariance — standard process-noise sca
 
 ## 5. Stage 3 — Measured-state CVs → filter consistency (NIV = 1)
 
-**Script:** `scripts/tune_cv.py` (on P4). **Automated, replaces the historical manual tuning.**
+**Script:** `scripts/01_tune_cv.py` (on P4). **Automated, replaces the historical manual tuning.**
 
 For each measured state the per-step CV is driven to the consistency target NIV = 1, where
 
@@ -138,7 +138,7 @@ override the NIV target.
 
 ## 6. Stage 4 — NSD process noise α → accuracy (NRMSE), band validated
 
-**Scripts:** `scripts/tune_alpha.py` (sweep + cross-validation), `scripts/run_option_b.py`
+**Scripts:** `scripts/03_tune_alpha_nsd.py` (NSD α sweep + per-α band inspection), `scripts/04_cross_validate.py` (full-fold cross-validation). *(The legacy `tune_alpha.py` / `run_option_b.py` in `scripts/legacy/` are the superseded originals.)*
 (sweep + save all-state bands/figures). **Runs on the Stage-3 CVs (must be re-swept if the
 CVs change — see §9).**
 
@@ -154,7 +154,7 @@ $$\text{NRMSE}_i = \frac{\text{RMSE}_i}{\text{mean}(\text{NSD}_{\text{meas},i})}
 
 **Two-stage α:** the NSD sweep here applies only to the 7 NSDs. The observable Asn/Glu share
 a smaller α_OBS, calibrated *separately* on P4 by an Asn-only sweep
-(`scripts/tune_alpha_asn.py`) — the NSD pathway is downstream of Asn (no feedback), so Asn's
+(`scripts/02_tune_alpha_asn.py`) — the NSD pathway is downstream of Asn (no feedback), so Asn's
 calibration is independent of the NSD α. Asn and Glu take the same swept value; only Asn is
 scored (Glu is never measured). Selected **α_OBS = 0.002** (P4: Asn NRMSE 0.40, 2σ coverage
 59%, spread-skill 0.37) — a bioprocessing-judgement pick favouring a tight, physically
@@ -177,7 +177,7 @@ sets must not blow up relative to P4.
 
 ## 7. Stage 5 — Verification: ensemble size
 
-**Script:** `scripts/ensemble_size_sensitivity.py` (on P4, final adopted config).
+**Script:** `scripts/05_ensemble_size.py` (on P4, final adopted config).
 
 Sweep N (e.g. 25, 50, 75, 100, 150, 200), N_RUNS independent passes each, reporting mean ±
 std of: measured normalised RMSE / NIS / 2σ coverage; NSD normalised RMSE / coverage /
@@ -224,7 +224,7 @@ Stage 1  P0         (from R / Q)
    │
 Stage 2  noise model (structural)
    │
-Stage 3  measured CVs -> NIV=1          (tune_cv.py)   ── adopt into config
+Stage 3  measured CVs -> NIV=1          (01_tune_cv.py)   ── adopt into config
    │        (changes measured-state spread => changes cross-cov flow into NSDs)
    ▼
 Stage 4  NSD alpha  -> min NRMSE        (tune_alpha / run_option_b, on Stage-3 CVs)
@@ -256,17 +256,17 @@ stage may be tuned against a frozen output of a superseded configuration.
 
 ```bash
 # Stage 3 — automated measured-state CV calibration on P4 (NIV -> 1)
-./.venv/bin/python scripts/tune_cv.py --dataset P4 --iters 10 --cv-max 0.006 --cv-min 1e-4
+./.venv/bin/python scripts/01_tune_cv.py --dataset P4 --iters 10 --cv-max 0.006 --cv-min 1e-4
 #   -> results/cv_tuning/{cv_final.json, pkl/cv_tuned_P4.pkl, figures/*}
 #   Adopt the printed CVs into config.PROCESS_NOISE_CV, then:
 
 # Stage 4 — re-sweep NSD alpha on the adopted CVs (NRMSE), save bands/figures for all states
-./.venv/bin/python scripts/run_option_b.py --tuning-dataset P4 --validate P1,P2,P3 --run option_b
+./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune both
 #   -> results/option_b/{pkl/option_b_*.pkl, figures/option_b_*.png, summary}
 #   Adopt PROCESS_NOISE_ALPHA = <selected> into config, then:
 
 # Stage 5 — ensemble-size verification on the final config
-./.venv/bin/python scripts/ensemble_size_sensitivity.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens
+./.venv/bin/python scripts/05_ensemble_size.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens
 ```
 
 Every run saves pkl trajectories **including uncertainty bands** (mean, std, ±1σ, ±2σ) and
@@ -280,9 +280,10 @@ visualization figures under `results/<run>/`.
 - **Stage 3:** ✅ **adopted** — automated CVs (cap 0.006) in `config.PROCESS_NOISE_CV`.
 - **Stage 4 (obs tier):** ✅ **adopted** — `PROCESS_NOISE_ALPHA_OBS = 0.002` (Asn/Glu).
 - **Stage 4 (NSD α):** ✅ **confirmed = 0.01** by re-sweep on the adopted CVs
-  (`tune_alpha_nsd.py`, P4, 0.005–0.04). Best calibration/accuracy balance (mean NRMSE ≈
+  (`03_tune_alpha_nsd.py`, P4, 0.005–0.04). Best calibration/accuracy balance (mean NRMSE ≈
   min, coverage 60%, UDP-Glc perfectly calibrated). **Remaining:** cross-validate 0.01 on
-  P1–P3 and produce the final all-state Option-B bands (`run_option_b.py --fixed-alpha 0.01`).
+  P1–P3 (via `04_cross_validate.py`) and produce the final all-state bands
+  (`scripts/legacy/run_option_b.py --fixed-alpha 0.01`, or `run_enkf.py` + `plot_results.py`).
   UDP-GalNAc and GDP-Man are structural model limitations no α fixes (disclosed).
 - **Stage 5:** ensemble-size sweep to be re-run on the final config (prior run reached only
   N = 25 fully + N = 50 partial before interruption).

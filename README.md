@@ -28,12 +28,20 @@ EnKF-Soft-Sensing/
 │   ├── analysis.py          #   RMSE, measurement ensembles, Gramian
 │   ├── plotting.py          #   Publication-quality plotting functions
 │   └── io_utils.py          #   Pickle I/O helpers
-├── scripts/
-│   ├── run_enkf.py          #   Run EnKF pipeline (compute + RMSE)
-│   ├── plot_results.py      #   Generate all figures from a run
-│   └── 05_systematic_tuning.py  # Innovation-based Q/R tuning
+├── scripts/                 # Numbered systematic-tuning pipeline (run in order)
+│   ├── 01_tune_cv.py        #   Stage 3  measured-state CVs -> NIV=1 (cap 0.006)
+│   ├── 02_tune_alpha_asn.py #   Stage 4a observable-tier alpha (Asn & Glu)
+│   ├── 03_tune_alpha_nsd.py #   Stage 4b NSD alpha (band inspection)
+│   ├── 04_cross_validate.py #   full-fold cross-validation of the tuning procedure
+│   ├── 05_ensemble_size.py  #   Stage 5  ensemble-size sensitivity (justify N=100)
+│   ├── run_enkf.py          #   utility: run the production EnKF pipeline
+│   ├── plot_results.py      #   utility: generate figures from a run
+│   └── legacy/              #   superseded scripts (kept for provenance)
+├── docs/
+│   ├── tuning_strategy.md   #   the systematic tuning method (manuscript-ready)
+│   └── tuning_log.md        #   chronological tuning decision log
 ├── data/raw/                # Experimental data (P1-P4, not in git)
-├── results/                 # Generated outputs (gitignored)
+├── results/                 # Generated outputs (pkls gitignored, figures tracked)
 ├── pyproject.toml
 ├── poetry.lock
 └── LICENSE
@@ -67,6 +75,36 @@ poetry run python scripts/plot_results.py --run my_experiment
 # Only specific figure groups
 poetry run python scripts/plot_results.py --run my_experiment --only uncertainty
 poetry run python scripts/plot_results.py --run my_experiment --only diagnostics
+```
+
+## Systematic covariance tuning
+
+The EnKF noise parameters are calibrated by an ordered, reproducible-from-data procedure.
+The full method (criteria, reasoning, dependencies) is in
+[`docs/tuning_strategy.md`](docs/tuning_strategy.md); the decision history is in
+[`docs/tuning_log.md`](docs/tuning_log.md). The `scripts/` are numbered to match the steps:
+
+| Step | Script | What it tunes | Metric |
+|------|--------|---------------|--------|
+| 3  | `01_tune_cv.py`        | measured-state per-step CVs (multiplicative noise) | NIV → 1 (filter consistency), cap `CV_MAX=0.006` |
+| 4a | `02_tune_alpha_asn.py` | observable-tier additive α (Asn & Glu, shared)     | Asn NRMSE + coverage |
+| 4b | `03_tune_alpha_nsd.py` | NSD additive α (7 intracellular states)            | NSD NRMSE + band inspection |
+| —  | `04_cross_validate.py` | full-fold CV of the whole procedure across P1–P4   | held-out NSD/Asn NRMSE + coverage |
+| 5  | `05_ensemble_size.py`  | verify ensemble size N                             | NIS / coverage / spread-skill vs N |
+
+Measurement noise `R` and the initial covariance `P0` are set from data in `config.py`
+(Stages 0–2), not by these scripts. Each script tunes on **P4** and validates on **P1–P3**;
+`04_cross_validate.py` rotates that split across all four batches. Every run writes
+mean/std trajectories with uncertainty bands (`results/<run>/pkl/`) and figures
+(`results/<run>/figures/`).
+
+```bash
+# Steps 3 -> 4a -> 4b, then cross-validation, then N verification:
+caffeinate -i ./.venv/bin/python scripts/01_tune_cv.py --dataset P4
+caffeinate -i ./.venv/bin/python scripts/02_tune_alpha_asn.py
+caffeinate -i ./.venv/bin/python scripts/03_tune_alpha_nsd.py
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune both
+caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py
 ```
 
 ## Citation

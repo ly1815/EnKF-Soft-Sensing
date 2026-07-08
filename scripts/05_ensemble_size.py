@@ -24,19 +24,18 @@ Metrics per size (mean +/- std across runs):
 Crash-safe: results are saved after every run; --resume continues from the exact
 run left off (per-size pkl holds the runs done so far), so a kill costs <=1 pass.
 
-Usage:
-    # Recommended overnight run (drops N=300; full 10 seeds) -- ~8.4 h wall time:
-    ./.venv/bin/python scripts/05_ensemble_size.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens
+Usage (macOS venv):
+    # Default sweep — N in {25,50,100,150,200}, 10 seeds each:
+    caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py --n-runs 10 --run ensemble_sens
 
-    # Full default sweep incl. N=300 -- ~12.6 h:
-    ./.venv/bin/python scripts/05_ensemble_size.py --n-runs 10 --run ensemble_sens
+    # Resume a killed/interrupted run (each run is saved as it finishes; kill costs <=1 pass):
+    caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py --n-runs 10 --run ensemble_sens --resume
 
-    # Resume a killed/interrupted run (each size is saved as it finishes):
-    ./.venv/bin/python scripts/05_ensemble_size.py --sizes 25,50,75,100,150,200 --n-runs 10 --run ensemble_sens --resume
+    # Full-resolution trajectories instead of x20 downsampled: --traj-down 1
 
-Runtime (measured, scales ~linearly with N): ~8.4 min per pass at N=100, so total
-wall time ~= 5.05 s * (sum of sizes / 100) * n_runs. Uses the current config.py
-(tuned_v6 measured CVs + Option B alpha=0.01/0.001), NOT the cv_tuning checkpoint.
+Runtime scales ~linearly with N and with n_runs. Uses the CURRENT config.py — the adopted
+automated CVs (cap CV_MAX=0.006) plus the two-stage additive alpha (0.01 for the 7 NSDs,
+0.002 for Asn/Glu). Pulled live from config, so this always reflects the tuned filter.
 
 Trajectories: each run also stores its mean/std trajectory (downsampled by --traj-down,
 default x20) plus the raw innovations and S at the measurement-update times, so any
@@ -73,7 +72,7 @@ from nsd_enkf.enkf import EnsembleKalmanFilter
 p = argparse.ArgumentParser(description="Ensemble-size sensitivity + calibration on P4")
 p.add_argument("--run", default="ensemble_sens")
 p.add_argument("--dataset", default="P4")
-p.add_argument("--sizes", default="25,50,75,100,150,200,300")
+p.add_argument("--sizes", default="25,50,100,150,200")
 p.add_argument("--n-runs", default=10, type=int)
 p.add_argument("--seed-offset", default=42, type=int)
 p.add_argument("--resume", action="store_true", help="skip sizes whose pkl already exists")

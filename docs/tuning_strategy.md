@@ -274,11 +274,15 @@ visualization figures under `results/<run>/`.
 
 ---
 
-## 12. Current status (2026-07-07)
+## 12. Current status (2026-07-08)
 
 - **Stage 0–2:** settled (R from data; P0 derived; noise model structural).
-- **Stage 3:** `tune_cv.py` finalized (general termination, artifacts). **Run + adopt pending.**
-- **Stage 4:** to be **re-swept on the adopted CVs** (current α = 0.01 was optimised against
-  the superseded hand-tuned CVs and is not carried over unchanged).
+- **Stage 3:** ✅ **adopted** — automated CVs (cap 0.006) in `config.PROCESS_NOISE_CV`.
+- **Stage 4 (obs tier):** ✅ **adopted** — `PROCESS_NOISE_ALPHA_OBS = 0.002` (Asn/Glu).
+- **Stage 4 (NSD α):** ✅ **confirmed = 0.01** by re-sweep on the adopted CVs
+  (`tune_alpha_nsd.py`, P4, 0.005–0.04). Best calibration/accuracy balance (mean NRMSE ≈
+  min, coverage 60%, UDP-Glc perfectly calibrated). **Remaining:** cross-validate 0.01 on
+  P1–P3 and produce the final all-state Option-B bands (`run_option_b.py --fixed-alpha 0.01`).
+  UDP-GalNAc and GDP-Man are structural model limitations no α fixes (disclosed).
 - **Stage 5:** ensemble-size sweep to be re-run on the final config (prior run reached only
   N = 25 fully + N = 50 partial before interruption).

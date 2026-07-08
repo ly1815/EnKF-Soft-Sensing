@@ -395,6 +395,19 @@ are comparable), then cross-validated on P1-P3. Selected value: **alpha = 0.01**
 `scripts/run_option_b.py` (sweep + save mean/std bands for all 17 states; run stored in
 `results/ob_wide/`).
 
+### Re-sweep on the adopted CVs (2026-07-08)
+The NSD alpha was **re-swept on the adopted CVs** (cap 0.006) with `scripts/tune_alpha_nsd.py`
+(P4, grid 0.005–0.04), so it no longer inherits its value from the superseded tuned_v6 CVs.
+**alpha = 0.01 is confirmed.** Aggregate over the 7 NSDs: mean NRMSE 1.28→1.33→1.42 across
+0.005/0.01/0.02, so 0.01 is within a hair of the accuracy optimum while coverage rises
+46%→60% and median spread-skill 0.20→0.43 (0.01 balances accuracy vs band quality; UDP-Glc
+lands perfectly calibrated, ss≈1.06). The aggregate NRMSE is dominated by **UDP-GalNAc**
+(NRMSE≈4.9, cov 27%) — a structural overprediction the model cannot escape at any alpha; the
+other six NSDs are all NRMSE<1.3. **GDP-Man** is similarly structural (model near-flat,
+coverage ~9% at every alpha). Both are disclosed as model-fidelity limitations, not tuning
+failures. Remaining: cross-validate 0.01 on P1–P3 and save the final all-state bands
+(`run_option_b.py --fixed-alpha 0.01`).
+
 ---
 
 ## 11. Localization Removed (Clipping Only)

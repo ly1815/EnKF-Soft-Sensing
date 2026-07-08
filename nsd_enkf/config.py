@@ -375,7 +375,8 @@ PROCESS_NOISE_CV = {
 # so they share the smaller PROCESS_NOISE_ALPHA_OBS. ALPHA_OBS is calibrated separately from
 # the NSD alpha because the NSD pathway is downstream of Asn (no feedback), so it is set by
 # an Asn-only sweep (scripts/tune_alpha_asn.py); Asn and Glu share the value.
-PROCESS_NOISE_ALPHA = 0.01       # NSDs; per-step, to be re-swept on the adopted CVs
+PROCESS_NOISE_ALPHA = 0.01       # NSDs; per-step, confirmed on the adopted CVs via
+                                 # scripts/tune_alpha_nsd.py (P4 sweep 0.005-0.04)
 PROCESS_NOISE_ALPHA_OBS = 0.002  # Asn, Glu; calibrated on P4 via the Asn sweep
                                  # (scripts/tune_alpha_asn.py; bioprocessing judgement)
 ALPHA_OBS_STATES = ['Asn', 'Glu']

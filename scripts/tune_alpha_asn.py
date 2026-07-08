@@ -48,7 +48,7 @@ import nsd_enkf.config as cfg
 from nsd_enkf.data_loader import (
     select_datasets, load_dataset, get_initial_condition, build_schedule,
 )
-from nsd_enkf.model import compute_volume_results
+from nsd_enkf.model import compute_volume_results, simulate_dataset
 from nsd_enkf.analysis import generate_measurement_ensembles
 from nsd_enkf.enkf import run_enkf_single_with_ensemble_diagnostics
 
@@ -61,6 +61,8 @@ p.add_argument("--seed", default=42, type=int)
 p.add_argument("--run", default="alpha_asn")
 p.add_argument("--traj-down", default=20, type=int)
 p.add_argument("--no-plots", action="store_true")
+p.add_argument("--replot", action="store_true",
+               help="skip the EnKF sweep; regenerate figures from existing pkls (fast)")
 args = p.parse_args()
 
 ALPHAS = [float(a) for a in args.alphas.split(",")]
@@ -126,6 +128,12 @@ asn_err = set_err[:, asn_col]
 T_meas = np.array(cfg.T_MEAS_FIXED)
 meas_grid_idx = [min(int(round(t / dt_kf)) + 1, N_kf) for t in T_meas]   # post-update
 
+# Open-loop model (no assimilation) — identical for every alpha; overlaid for reference.
+_Fin, _Fout, _Gf, _Uf = build_schedule(DS)
+asn_model = np.vstack([x0, simulate_dataset(x0, _Fin, _Fout, _Gf, _Uf,
+                                            volume_results[DS][1:], time_grid, step_len,
+                                            name=DS)])[:, ASN]
+
 
 def run_pass(alpha_obs):
     var_model = var_model_for(alpha_obs)
@@ -155,25 +163,31 @@ def asn_metrics(mean_traj, std_traj):
     return dict(rmse=rmse, nrmse=rmse / norm, cov=cov, ss=ss)
 
 
-# ── Sweep ──────────────────────────────────────────────────────────────────
+# ── Sweep (or reload metrics in --replot) ────────────────────────────────────
 results = {}
-for a in ALPHAS:
-    print(f"  alpha_asn={a:g} ...", flush=True)
-    mt, st = run_pass(a)
-    met = asn_metrics(mt, st)
-    results[a] = met
-    with open(PKL_DIR / f"asn_alpha_{a:g}.pkl", "wb") as f:
-        pickle.dump({
-            "dataset": DS, "alpha_obs": a, "state": "Asn", "T": T_model,
-            "mean_trajectory": mt[:, ASN], "std_trajectory": st[:, ASN],
-            "band_1sigma_lo": np.maximum(mt[:, ASN] - st[:, ASN], 0.0),
-            "band_1sigma_hi": mt[:, ASN] + st[:, ASN],
-            "band_2sigma_lo": np.maximum(mt[:, ASN] - 2 * st[:, ASN], 0.0),
-            "band_2sigma_hi": mt[:, ASN] + 2 * st[:, ASN],
-            "asn_meas": asn_meas, "asn_err": asn_err, "T_meas": T_meas,
-            "metrics": met,
-        }, f)
-    del mt, st
+if args.replot:
+    for a in ALPHAS:
+        results[a] = pickle.load(open(PKL_DIR / f"asn_alpha_{a:g}.pkl", "rb"))["metrics"]
+    print("Replot mode: metrics loaded from existing pkls (EnKF sweep skipped).")
+else:
+    for a in ALPHAS:
+        print(f"  alpha_obs={a:g} (Asn & Glu) ...", flush=True)
+        mt, st = run_pass(a)
+        met = asn_metrics(mt, st)
+        results[a] = met
+        with open(PKL_DIR / f"asn_alpha_{a:g}.pkl", "wb") as f:
+            pickle.dump({
+                "dataset": DS, "alpha_obs": a, "state": "Asn", "T": T_model,
+                "mean_trajectory": mt[:, ASN], "std_trajectory": st[:, ASN],
+                "band_1sigma_lo": np.maximum(mt[:, ASN] - st[:, ASN], 0.0),
+                "band_1sigma_hi": mt[:, ASN] + st[:, ASN],
+                "band_2sigma_lo": np.maximum(mt[:, ASN] - 2 * st[:, ASN], 0.0),
+                "band_2sigma_hi": mt[:, ASN] + 2 * st[:, ASN],
+                "model_trajectory": asn_model,
+                "asn_meas": asn_meas, "asn_err": asn_err, "T_meas": T_meas,
+                "metrics": met,
+            }, f)
+        del mt, st
 
 # ── Table ──────────────────────────────────────────────────────────────────
 print(f"\nAsn metrics vs alpha ({DS}):")
@@ -205,6 +219,7 @@ if not args.no_plots:
         ax.fill_between(tds, dd["band_1sigma_lo"][::DOWN], dd["band_1sigma_hi"][::DOWN],
                         color="steelblue", alpha=0.30)
         ax.plot(tds, dd["mean_trajectory"][::DOWN], color="steelblue", lw=2)
+        ax.plot(tds, asn_model[::DOWN], color="red", lw=1.6)
         ax.errorbar(T_meas, asn_meas, yerr=asn_err, fmt="o", color="darkorange",
                     ms=4, capsize=2, elinewidth=1, zorder=5)
         r = results[a]
@@ -215,11 +230,12 @@ if not args.no_plots:
         axes[k].set_visible(False)
     fig.suptitle(f"Asn additive-noise alpha sweep — {DS}", fontsize=14, fontweight="bold")
     fig.legend(handles=[
+        Line2D([0], [0], color="red", lw=1.6, label="Open-loop model"),
         Line2D([0], [0], color="steelblue", lw=2, label="EnKF mean"),
         Patch(facecolor="steelblue", alpha=0.30, label=r"$\pm1\sigma$"),
         Patch(facecolor="steelblue", alpha=0.15, label=r"$\pm2\sigma$"),
         Line2D([0], [0], color="darkorange", marker="o", lw=0, ms=6, label="Asn measurements"),
-    ], loc="lower center", ncol=4, frameon=False, bbox_to_anchor=(0.5, -0.02))
+    ], loc="lower center", ncol=5, frameon=False, bbox_to_anchor=(0.5, -0.02))
     plt.tight_layout(rect=[0, 0.03, 1, 0.98])
     fig.savefig(FIG_DIR / "asn_alpha_trajectories.png", dpi=150, bbox_inches="tight")
     plt.close(fig)

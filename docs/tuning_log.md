@@ -13,7 +13,7 @@ for the manuscript methods section and for future re-tuning.
   git `1adfc95`), still adopted in `config.py`. An automated re-calibration
   (`scripts/tune_cv.py`) is in progress — see Section 12.
 - **Unmeasured-state process noise:** a single universal two-stage additive scalar —
-  `PROCESS_NOISE_ALPHA = 0.01` (7 NSDs) and `PROCESS_NOISE_ALPHA_OBS = 0.001`
+  `PROCESS_NOISE_ALPHA = 0.01` (7 NSDs) and `PROCESS_NOISE_ALPHA_OBS = 0.002`
   (Asn, Glu). This "Option B" scheme supersedes the hand-picked per-state Q of
   Section 5 — see Section 10.
 - **Localization:** none (`NO_UPDATE_STATES = []`); UDP-Gal's near-zero instability is
@@ -359,18 +359,24 @@ independent of any single validation dataset.
 ### Two-stage alpha
 - **7 structurally-unobservable NSDs** (UDPGal, UDPGalNAc, UDPGlc, UDPGlcNAc, GDPMan,
   GDPFuc, CMPNeu5Ac): `PROCESS_NOISE_ALPHA = 0.01`.
-- **Observable unmeasured states** (Asn, Glu): `PROCESS_NOISE_ALPHA_OBS = 0.001`. These
+- **Observable unmeasured states** (Asn, Glu): `PROCESS_NOISE_ALPHA_OBS = 0.002`. These
   are strongly coupled to the measured states and well constrained by cross-covariance
   corrections, so they need far less injected noise. A single-tier alpha (same value
   everywhere) put too much noise on Asn (git `4e2bcf8`, "one tier noise too big for
-  asn"), motivating the split. Asn/Glu are pinned at ALPHA_OBS and excluded from the sweep.
+  asn"), motivating the split. ALPHA_OBS is calibrated *separately* from the NSD alpha via
+  an Asn-only sweep (`scripts/tune_alpha_asn.py`) — the NSD pathway is downstream of Asn (no
+  feedback), so Asn's calibration is independent of the NSD alpha. Asn and Glu share the
+  swept value; only Asn is scored (Glu is never measured). P4 sweep (0.001–0.01), Asn:
+  0.001 → NRMSE 0.34 / cov 24% / ss 0.22; **0.002 → NRMSE 0.40 / cov 59% / ss 0.37 (adopted)**;
+  0.01 → NRMSE 0.43 / cov 88% / ss 1.00. 0.002 is a bioprocessing-judgement pick — a tight,
+  physically sensible band accepting under-coverage (as with Glc). Excluded from the NSD sweep.
 
 ### Scale values (config `PROCESS_NOISE_SCALE`, mM)
 
 | State | scale (median) | alpha stage |
 |-------|----------------|-------------|
-| Asn | 5.13 | OBS (0.001) |
-| Glu | 3.735 (open-loop median) | OBS (0.001) |
+| Asn | 5.13 | OBS (0.002) |
+| Glu | 3.735 (open-loop median) | OBS (0.002) |
 | UDPGal | 0.5198 | NSD (0.01) |
 | UDPGalNAc | 0.1615 | NSD (0.01) |
 | UDPGlc | 0.5224 | NSD (0.01) |

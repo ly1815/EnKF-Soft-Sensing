@@ -22,7 +22,7 @@ The chronological decision history (what was tried, superseded, and why) lives i
 | **Noise model** | Measured → multiplicative CV; unmeasured → additive | — (structural) | `enkf.py` | No — by design |
 | **Measured CVs** (8) | Fixed-point `CV ← CV·√NIV` to filter consistency | **NIV = 1** | `scripts/tune_cv.py` | **Yes — automated** |
 | **NSD α** (1 scalar, 7 states) | Sweep; minimise mean NSD NRMSE | **min NRMSE**; band validated by coverage/spread-skill | `scripts/tune_alpha.py`, `run_option_b.py` | **Yes — swept** |
-| **α_OBS** (Asn, Glu) | Fixed smaller scalar (observable via coupling) | — | `config.PROCESS_NOISE_ALPHA_OBS` | No — pinned |
+| **α_OBS** (Asn, Glu) | Asn-only sweep on P4 (Asn & Glu share it) | Asn NRMSE + coverage | `config.PROCESS_NOISE_ALPHA_OBS` | Yes — Asn sweep |
 | **IQR clipping** | 7 NSDs clipped to `[1e-12, Q3+5·IQR]` after predict/update | — (stability) | `config.CLIP_STATES` | No — structural |
 | **Ensemble size N** | Sensitivity sweep on final config | NIS, coverage, spread-skill vs N | `scripts/ensemble_size_sensitivity.py` | Verification |
 
@@ -43,12 +43,12 @@ The chronological decision history (what was tried, superseded, and why) lives i
 | Class | States | In Kalman update? | Noise model | Tuned via |
 |---|---|---|---|---|
 | **Measured** (8) | Xv, mAb, Gal, Urd, Glc, Amm, Gln, Lac | Yes (H rows) | Multiplicative CV | NIV = 1 |
-| **Observable-unmeasured** (2) | Asn, Glu | No | Additive (α_OBS) | Pinned |
+| **Observable-unmeasured** (2) | Asn, Glu | No | Additive (α_OBS) | Asn sweep |
 | **NSDs** (7) | UDPGal, UDPGalNAc, UDPGlc, UDPGlcNAc, GDPMan, GDPFuc, CMPNeu5Ac | No | Additive (α) | NRMSE |
 
 Asn/Glu are unmeasured in the update but **strongly coupled** to the measured states, so
 they are well constrained by cross-covariance corrections and need only a small, fixed
-process noise (α_OBS = 0.001). The NSDs are structurally unobservable and rely on the model
+process noise (α_OBS = 0.002). The NSDs are structurally unobservable and rely on the model
 plus propagated corrections; their process noise (α = the swept knob) is the main handle.
 
 ---
@@ -152,9 +152,14 @@ information into the NSD means** — which is the operational goal. Selection me
 
 $$\text{NRMSE}_i = \frac{\text{RMSE}_i}{\text{mean}(\text{NSD}_{\text{meas},i})}\ \text{(dimensionless)},\qquad \alpha^\* = \arg\min_\alpha \frac{1}{7}\sum_{i} \text{NRMSE}_i \ \text{on P4.}$$
 
-**Two-stage α:** the swept α applies to the 7 NSDs; the observable Asn/Glu are pinned at the
-smaller, fixed α_OBS = 0.001 (they are well constrained by coupling and a single-tier α puts
-too much noise on Asn). Asn/Glu are excluded from the sweep.
+**Two-stage α:** the NSD sweep here applies only to the 7 NSDs. The observable Asn/Glu share
+a smaller α_OBS, calibrated *separately* on P4 by an Asn-only sweep
+(`scripts/tune_alpha_asn.py`) — the NSD pathway is downstream of Asn (no feedback), so Asn's
+calibration is independent of the NSD α. Asn and Glu take the same swept value; only Asn is
+scored (Glu is never measured). Selected **α_OBS = 0.002** (P4: Asn NRMSE 0.40, 2σ coverage
+59%, spread-skill 0.37) — a bioprocessing-judgement pick favouring a tight, physically
+sensible band over full statistical coverage (as with Glc). Asn/Glu are excluded from the
+NSD sweep.
 
 **Band validation (report, do not re-select).** NRMSE scores only the *mean*; the ±2σ
 *band* must be separately validated. At the selected α, report for the NSDs on P4 **and**

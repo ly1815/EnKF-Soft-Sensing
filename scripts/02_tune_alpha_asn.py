@@ -17,7 +17,7 @@ measurements: RMSE, NRMSE (RMSE / mean measurement), 2-sigma coverage, and sprea
 (config.PROCESS_NOISE_CV). Nothing is auto-adopted — this prints/plots for inspection.
 
 Outputs (results/<run>/):
-  pkl/asn_alpha_<a>.pkl              : Asn mean/std trajectory + bands + measurements
+  pkl/asn_alpha_<a>.pkl              : full all-17-state mean/std trajectories + Asn bands/model/meas
   figures/asn_alpha_trajectories.png : Asn mean +/-1/2 sigma per alpha vs measurements
   figures/asn_metrics_vs_alpha.png   : NRMSE / coverage / spread-skill vs alpha
 
@@ -177,13 +177,17 @@ else:
         results[a] = met
         with open(PKL_DIR / f"asn_alpha_{a:g}.pkl", "wb") as f:
             pickle.dump({
-                "dataset": DS, "alpha_obs": a, "state": "Asn", "T": T_model,
-                "mean_trajectory": mt[:, ASN], "std_trajectory": st[:, ASN],
-                "band_1sigma_lo": np.maximum(mt[:, ASN] - st[:, ASN], 0.0),
-                "band_1sigma_hi": mt[:, ASN] + st[:, ASN],
-                "band_2sigma_lo": np.maximum(mt[:, ASN] - 2 * st[:, ASN], 0.0),
-                "band_2sigma_hi": mt[:, ASN] + 2 * st[:, ASN],
-                "model_trajectory": asn_model,
+                "dataset": DS, "alpha_obs": a, "T": T_model,
+                "state_names": list(cfg.STATE_NAMES),
+                # full all-17-state mean + uncertainty trajectories (bands = mean +/- k*std)
+                "mean_trajectory": mt, "std_trajectory": st,
+                # Asn (the scored state): convenience series + bands + open-loop model + meas
+                "asn_mean": mt[:, ASN], "asn_std": st[:, ASN],
+                "asn_band_1sigma_lo": np.maximum(mt[:, ASN] - st[:, ASN], 0.0),
+                "asn_band_1sigma_hi": mt[:, ASN] + st[:, ASN],
+                "asn_band_2sigma_lo": np.maximum(mt[:, ASN] - 2 * st[:, ASN], 0.0),
+                "asn_band_2sigma_hi": mt[:, ASN] + 2 * st[:, ASN],
+                "asn_model": asn_model,
                 "asn_meas": asn_meas, "asn_err": asn_err, "T_meas": T_meas,
                 "metrics": met,
             }, f)
@@ -214,11 +218,11 @@ if not args.no_plots:
     for k, a in enumerate(ALPHAS):
         ax = axes[k]
         dd = pickle.load(open(PKL_DIR / f"asn_alpha_{a:g}.pkl", "rb"))
-        ax.fill_between(tds, dd["band_2sigma_lo"][::DOWN], dd["band_2sigma_hi"][::DOWN],
+        ax.fill_between(tds, dd["asn_band_2sigma_lo"][::DOWN], dd["asn_band_2sigma_hi"][::DOWN],
                         color="steelblue", alpha=0.15)
-        ax.fill_between(tds, dd["band_1sigma_lo"][::DOWN], dd["band_1sigma_hi"][::DOWN],
+        ax.fill_between(tds, dd["asn_band_1sigma_lo"][::DOWN], dd["asn_band_1sigma_hi"][::DOWN],
                         color="steelblue", alpha=0.30)
-        ax.plot(tds, dd["mean_trajectory"][::DOWN], color="steelblue", lw=2)
+        ax.plot(tds, dd["asn_mean"][::DOWN], color="steelblue", lw=2)
         ax.plot(tds, asn_model[::DOWN], color="red", lw=1.6)
         ax.errorbar(T_meas, asn_meas, yerr=asn_err, fmt="o", color="darkorange",
                     ms=4, capsize=2, elinewidth=1, zorder=5)

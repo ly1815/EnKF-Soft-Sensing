@@ -16,7 +16,7 @@ measurements: RMSE, NRMSE (RMSE / mean measurement), 2-sigma coverage, spread-sk
 (mean std / RMSE, ideal ~1). Nothing is auto-adopted — prints/plots for inspection.
 
 Outputs (results/<run>/):
-  pkl/nsd_alpha_<a>.pkl            : all-7-NSD mean/std trajectory + bands + meas + model
+  pkl/nsd_alpha_<a>.pkl            : full all-17-state mean/std trajectories + per-NSD bands/model/meas
   figures/nsd_bands_alpha_<a>.png  : 7-NSD band grid (mean, bands, model, meas) per alpha
   figures/nsd_metrics_vs_alpha.png : mean NRMSE / mean coverage / median spread-skill vs alpha
 
@@ -185,6 +185,9 @@ else:
         results[a] = met
         payload = {
             "dataset": DS, "alpha_nsd": a, "T": T_model, "nsd_names": nsd_names,
+            "state_names": list(cfg.STATE_NAMES),
+            # full all-17-state mean + uncertainty trajectories (per-NSD detail added below)
+            "mean_trajectory": mt, "std_trajectory": st,
             "metrics": met, "T_meas": T_meas,
         }
         for col, si in enumerate(nsd_state_idx):

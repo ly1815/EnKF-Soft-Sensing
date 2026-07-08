@@ -94,9 +94,36 @@ The full method (criteria, reasoning, dependencies) is in
 
 Measurement noise `R` and the initial covariance `P0` are set from data in `config.py`
 (Stages 0–2), not by these scripts. Each script tunes on **P4** and validates on **P1–P3**;
-`04_cross_validate.py` rotates that split across all four batches. Every run writes
-mean/std trajectories with uncertainty bands (`results/<run>/pkl/`) and figures
-(`results/<run>/figures/`).
+`04_cross_validate.py` rotates that split across all four batches. **Every run saves the
+full 17-state ensemble mean *and* standard-deviation (uncertainty) trajectories** to
+`results/<run>/pkl/` (bands = mean ± k·std), plus figures to `results/<run>/figures/`.
+
+### Cross-validation (`04_cross_validate.py`) — modes A and B
+
+`04` re-tunes on each fold and evaluates on the held-out batches. It is **fully automated**
+— no manual choices per fold. Two re-tune modes, selected with `--retune`:
+
+- **Mode A — `--retune cv`** *(default, ~6.6 h)*: per fold, re-calibrate only the measured
+  CVs (automated NIV=1); hold α_obs/α_nsd at the adopted config constants. Tests whether the
+  *automated calibration* generalizes.
+- **Mode B — `--retune all`** *(~14 h)*: additionally auto-select α_nsd and α_obs (argmin
+  NRMSE) per fold. Fully data-driven; heavier.
+
+Run them on separate days (each resumable); the A-vs-B comparison is assembled from
+whatever is already on disk. To keep each run short, add `--train <dataset>` to do **one
+fold at a time** (~1.6 h), accumulating into the same summary:
+
+```bash
+# Mode A — whole CV, or one fold at a time:
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv --train P4   # just the P4-trained fold
+
+# Mode B (run after A to also emit the A-vs-B comparison):
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune all
+caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune all --train P4
+
+# --scheme loo for leave-one-out (train on 3, hold out 1); --resume to continue; --retune both for one 20h shot
+```
 
 ```bash
 # Steps 3 -> 4a -> 4b, then cross-validation, then N verification:

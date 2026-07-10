@@ -1,65 +1,51 @@
 """
-04_cross_validate.py  —  Stage 4/5: generalized full-fold cross-validation
-===========================================================================
-Cross-validate the tuning *procedure* across the four batches to show it generalizes
-(rebuts the "lack of methodological validation" review point). For each fold the filter
-is (re-)tuned on the training data and then evaluated on the held-out data it never saw;
-we report parameter stability across folds and held-out soft-sensor accuracy/coverage.
+04_cross_validate.py  —  full-fold cross-validation with per-fold independent tuning
+=====================================================================================
+Rigorous full-fold CV: each fold is tuned INDEPENDENTLY on its training set (its own
+measured CVs + its own alpha_obs / alpha_nsd) and then validated on the other three
+batches it never saw. What is shared across folds is a single *selection RULE* for alpha,
+NOT a single alpha value — so no value leaks across folds; only the method generalizes.
 
-Fold schemes (`--scheme`):
-  rotate : each dataset takes a turn as the SOLE training set; validate on the other 3.
-           (Harder test — tune on one batch, must generalize to three.)
-  loo    : leave-one-out — train on the other 3 (pooled), validate on the held-out 1.
-           (Conventional k-fold; more training data per fold.)
+Two stages:
 
-Re-tune modes (`--retune`, run one or `both` to compare):
-  cv  (A): per fold, re-calibrate ONLY the measured-state CVs (automated NIV=1, cap
-           CV_MAX) on the training data; hold the design constants fixed (alpha_obs,
-           alpha_nsd from config). This is the honest "does our automated calibration
-           generalize" test — the alphas were physical/bioprocessing choices, part of the
-           method, not per-dataset fits.
-  all (B): additionally auto-select alpha_nsd (min mean NSD NRMSE) and alpha_obs (min Asn
-           NRMSE) on the training data. Fully data-driven per fold; heavier, and its alpha
-           selection differs from the judgment actually used — included for comparison.
+  --stage sweep    (per fold, on the training set)
+     * calibrate the measured CVs (fixed-point -> NIV=1); save the full per-iteration NIV
+       log, the final CVs, and the all-state trajectory + bands.
+     * sweep alpha_obs (Asn/Glu) and alpha_nsd (7 NSDs) over their grids; for EVERY alpha
+       save the full 17-state mean/std trajectory + uncertainty bands + metrics as pkl,
+       plus per-alpha figures and an overlay-vs-alpha figure.
+     During each sweep the other tier sits at a reference value; the exact picked pair is
+     only applied at validation. Nothing auto-selected — you inspect and hand-pick.
 
-R stays pooled across P1-P4 (assay replicate precision, a property of the measurement
-protocol, not of a batch — see docs/tuning_strategy.md Stage 0).
+  --stage validate --picks results_v1/picks.json
+     * for each fold: load ITS calibrated CVs and ITS hand-picked (alpha_obs, alpha_nsd),
+       apply to the held-out datasets, save all-state bands + metrics + grids.
 
-Held-out scoring targets the soft-sensor deliverables — the unmeasured states (7 NSDs +
-Asn); measured states are assimilated on the held-out batch so their fit is not the test.
-Per state: RMSE, NRMSE (RMSE/mean meas), 2-sigma coverage, spread-skill (mean std/RMSE).
+Everything is saved as pkl for full offline recovery (re-plot / re-derive any statistic
+without re-running). Output goes under --run (default: results_v1/).
 
-Crash-safe: each (mode, fold) is checkpointed to summary.json as it finishes; --resume
-skips completed folds. Runtime is large (many EnKF passes) — see below.
+picks.json format (fill in after inspecting the sweeps):
+  { "P1": {"alpha_obs": 0.002, "alpha_nsd": 0.03},
+    "P2": {"alpha_obs": 0.002, "alpha_nsd": 0.02}, ... }
 
-Outputs (results/<run>/<mode>/):
-  summary.json                      per-fold tuned params + held-out metrics
-  fold_<id>.pkl                     tuned params + all-state mean/std/bands per held-out ds
-  figures/cv_param_stability.png    tuned CVs (and alphas for B) across folds
-  figures/cv_heldout_metrics.png    held-out NSD/Asn NRMSE + coverage across folds
-And when both modes run:  figures/compare_A_vs_B.png,  comparison.json
+Layout:
+  results_v1/
+    fold_<X>/cv/            NIV log, cv_final.json, trajectory pkl, convergence figure
+    fold_<X>/alpha_obs/     per-alpha pkl (all 17 states) + figures + overlay
+    fold_<X>/alpha_nsd/     per-alpha pkl (all 17 states) + figures + overlay
+    fold_<X>/validation/    held-out all-state bands + grids + metrics  (validate stage)
+    summary/                cross-fold tables + comparison figures       (validate stage)
 
-Runtime (N=100, ~9 min/EnKF pass):
-  rotate, retune=cv  : 4 folds x (~8 calib + 3 eval)      ~= 44 passes ~= 6.6 h
-  rotate, retune=all : + alpha grids per fold             ~= 92 passes ~= 14 h
-  both               : ~= 20 h  -> run with caffeinate, --resume friendly
+Crash-safe / resumable at fold granularity (--resume). Runtime for the sweep stage is
+large (~12 h for 4 folds at N=100); run one fold at a time with --train <ds>.
 
-Usage (macOS venv) — run A and B on SEPARATE days to keep each run short; the A-vs-B
-comparison is assembled from whatever mode summaries are already on disk:
-  mkdir -p results/cross_validation
-  # day 1 — mode A (~6.6 h):
-  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune cv \
-      2>&1 | tee results/cross_validation/run_cv.log
-  # day 2 — mode B (~14 h); also emits the A-vs-B comparison since A is on disk:
-  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune all \
-      2>&1 | tee results/cross_validation/run_all.log
-  # Finer still — ONE fold per run (mode A single fold ~1.6 h), any order, accumulating:
-  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv --train P4
-  #   then --train P1, --train P2, --train P3 (separate runs -> same summary.json)
-  # (--retune both runs A+B in one ~20 h shot; --resume continues an interrupted run)
-  # quick structural preview (small N, few iters) — NOT for real results:
-  ./.venv/bin/python scripts/04_cross_validate.py --scheme rotate --retune cv \
-      --folds P3,P4 --ensemble-size 15 --cv-iters 2 --no-plots
+Usage (macOS venv):
+  # Stage 1 — sweep + save everything, one fold at a time (accumulates):
+  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --stage sweep --train P4
+  #   then --train P1 / P2 / P3   (or drop --train to do all four in one ~12h run)
+  # ... inspect results_v1/fold_*/{alpha_obs,alpha_nsd}/figures, write results_v1/picks.json ...
+  # Stage 2 — validate each fold at its picked alpha on its held-out sets:
+  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --stage validate --picks results_v1/picks.json
 """
 
 import argparse
@@ -78,6 +64,8 @@ from scipy.linalg import LinAlgWarning
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 
@@ -90,36 +78,32 @@ from nsd_enkf.analysis import generate_measurement_ensembles
 from nsd_enkf.enkf import EnsembleKalmanFilter, run_enkf_single_with_ensemble_diagnostics
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
-p = argparse.ArgumentParser(description="Generalized full-fold cross-validation of the tuning procedure")
-p.add_argument("--folds", default="P1,P2,P3,P4", help="datasets participating in the CV")
+p = argparse.ArgumentParser(description="Full-fold CV with per-fold independent tuning (sweep/validate)")
+p.add_argument("--stage", required=True, choices=["sweep", "validate"])
+p.add_argument("--folds", default="P1,P2,P3,P4")
 p.add_argument("--scheme", default="rotate", choices=["rotate", "loo"])
-p.add_argument("--train", default=None,
-               help="run ONLY the single fold that trains on THIS dataset (validate on all "
-                    "others). Lets you break the CV into one short ~1.6h run at a time, any "
-                    "order; folds accumulate into the same summary.json across runs.")
-p.add_argument("--retune", default="cv", choices=["cv", "all", "both"],
-               help="cv=A (~6.6h), all=B (~14h), both=one shot (~20h). Run 'cv' and 'all' "
-                    "on separate days — the A-vs-B comparison is built from whatever is on disk.")
+p.add_argument("--train", default=None, help="restrict to the single fold training on this dataset")
+p.add_argument("--run", default="results_v1")
+p.add_argument("--picks", default=None, help="validate stage: json {fold: {alpha_obs, alpha_nsd}}")
 p.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
-p.add_argument("--cv-iters", default=8, type=int, help="max CV fixed-point iterations per fold")
+p.add_argument("--cv-iters", default=8, type=int)
 p.add_argument("--cv-max", default=0.006, type=float)
 p.add_argument("--cv-min", default=1e-4, type=float)
 p.add_argument("--cv-tol", default=0.15, type=float)
-p.add_argument("--nsd-alphas", default="0.005,0.0075,0.01,0.02,0.03,0.04", help="alpha grid for retune=all")
-p.add_argument("--obs-alphas", default="0.001,0.002,0.004,0.006,0.008,0.01", help="alpha grid for retune=all")
+p.add_argument("--obs-alphas", default="0.001,0.002,0.004,0.006,0.008,0.01")
+p.add_argument("--nsd-alphas", default="0.005,0.0075,0.01,0.02,0.03,0.04")
 p.add_argument("--seed", default=42, type=int)
-p.add_argument("--run", default="cross_validation")
 p.add_argument("--traj-down", default=20, type=int)
 p.add_argument("--no-plots", action="store_true")
-p.add_argument("--resume", action="store_true", help="skip (mode, fold) already in summary.json")
+p.add_argument("--resume", action="store_true")
 args = p.parse_args()
 
 DATASETS = [d for d in args.folds.split(",") if d]
-MODES = ["cv", "all"] if args.retune == "both" else [args.retune]
 ENS = args.ensemble_size
-NSD_GRID = [float(a) for a in args.nsd_alphas.split(",")]
 OBS_GRID = [float(a) for a in args.obs_alphas.split(",")]
-RESULTS_DIR = cfg.PROJECT_ROOT / "results" / args.run
+NSD_GRID = [float(a) for a in args.nsd_alphas.split(",")]
+RUN = cfg.PROJECT_ROOT / args.run if not Path(args.run).is_absolute() else Path(args.run)
+DOWN = max(int(args.traj_down), 1)
 
 meas_names = cfg.MEASURED_STATES
 MEAS = cfg.MEAS_NUM
@@ -127,11 +111,8 @@ n_nsd = 7
 nsd_state_idx = list(range(cfg.STATE_NUM - n_nsd, cfg.STATE_NUM))
 nsd_names = [cfg.STATE_NAMES[i] for i in nsd_state_idx]
 ASN = cfg.STATE_NAMES.index("Asn")
-
-print("=" * 78)
-print(f"Full-fold cross-validation  scheme={args.scheme}  retune={args.retune}  N={ENS}")
-print(f"  datasets={DATASETS}  (R pooled)")
-print("=" * 78)
+REF_OBS = cfg.PROCESS_NOISE_ALPHA_OBS
+REF_NSD = cfg.PROCESS_NOISE_ALPHA
 
 # ── Fixed grids / matrices ────────────────────────────────────────────────────
 time_grid = np.arange(cfg.DT, cfg.T_END + cfg.DT, cfg.DT)
@@ -140,7 +121,6 @@ N_model = int(cfg.T_END / cfg.DT)
 T_model = np.linspace(0, cfg.T_END, N_model + 1)
 dt_kf = cfg.DT
 N_kf = len(T_model) - 1
-
 var_meas = np.array(list(cfg.MEASUREMENT_NOISE_VAR.values()))
 R = np.diag(var_meas[:MEAS])
 H = np.hstack((np.eye(MEAS), np.zeros((MEAS, cfg.STATE_NUM - MEAS))))
@@ -155,7 +135,6 @@ T_meas = np.array(cfg.T_MEAS_FIXED)
 meas_grid_idx = [min(int(round(t / dt_kf)) + 1, N_kf) for t in T_meas]
 time_steps_A = [round(i * dt_kf, 2) for i in range(N_kf)]
 meas_time_to_index = {round(t, 2): i for i, t in enumerate(T_meas.tolist())}
-
 volume_results = compute_volume_results(select_datasets(*DATASETS), cfg.INITIAL_VOLUMES,
                                         build_schedule, step_len)
 
@@ -168,20 +147,17 @@ def build_Q(alpha_obs, alpha_nsd):
 
 
 def P0_from(Q):
-    d = np.diag(Q).copy()
-    d[:MEAS] = P0_meas[:MEAS]
+    d = np.diag(Q).copy(); d[:MEAS] = P0_meas[:MEAS]
     return np.diag(d)
 
 
-# ── Per-dataset static inputs (cached) ────────────────────────────────────────
 _cache = {}
 def ds_data(name):
     if name not in _cache:
         d = load_dataset(name)
         _, x0 = get_initial_condition(d["met_df"], d["nsd_df"])
-        set_meas_full = d["set_meas"].astype(float)
-        set_err = d["set_meas_errorbar"].astype(float)
-        asn_col = set_meas_full.shape[1] - 1
+        sm = d["set_meas"].astype(float); se = d["set_meas_errorbar"].astype(float)
+        asn_col = sm.shape[1] - 1
         np.random.seed(args.seed)
         mens = generate_measurement_ensembles(select_datasets(name), load_dataset,
                                               MEAS, ENS, var_meas)[name]
@@ -190,18 +166,14 @@ def ds_data(name):
                                                 volume_results[name][1:], time_grid, step_len,
                                                 name=name)])
         _cache[name] = dict(
-            x0=x0, set_meas=set_meas_full[:, :MEAS], set_err=set_err,
-            asn_meas=set_meas_full[:, asn_col], asn_err=set_err[:, asn_col],
+            x0=x0, set_meas=sm[:, :MEAS], asn_meas=sm[:, asn_col], asn_err=se[:, asn_col],
+            set_err=se, mens=mens, controls=(Fin, Fout, Gf, Uf, volume_results[name][1:]), model=model,
             nsd_meas=pd.DataFrame(d["NSD_meas"]).apply(pd.to_numeric, errors="coerce").to_numpy(),
-            nsd_err=pd.DataFrame(d["NSD_meas_errorbar"]).apply(pd.to_numeric, errors="coerce").to_numpy(),
-            mens=mens, controls=(Fin, Fout, Gf, Uf, volume_results[name][1:]), model=model,
-        )
+            nsd_err=pd.DataFrame(d["NSD_meas_errorbar"]).apply(pd.to_numeric, errors="coerce").to_numpy())
     return _cache[name]
 
 
-# ── EnKF passes ────────────────────────────────────────────────────────────
 def enkf_pass(name, cv_idx, Q, P0):
-    """Diagnostic pass -> (mean_traj, std_traj) for all states."""
     np.random.seed(args.seed)
     _, std_traj, mean_traj = run_enkf_single_with_ensemble_diagnostics(
         dataset_name=name, load_dataset_fn=load_dataset, build_schedule_fn=build_schedule,
@@ -210,21 +182,16 @@ def enkf_pass(name, cv_idx, Q, P0):
         state_num=cfg.STATE_NUM, meas_num=MEAS, ensemble_size=ENS,
         Q=Q, R=R, H=H, dt_kf=dt_kf, N_kf=N_kf, P0=P0,
         process_noise_cv=dict(cv_idx), no_update_indices=set(no_update_indices),
-        clip_indices=set(clip_indices),
-    )
+        clip_indices=set(clip_indices))
     return mean_traj, std_traj
 
 
 def niv_sqnorm(name, cv_idx, Q, P0):
-    """One EnKF pass; return per-measured-state list of squared normalised innovations
-    (raw, so they can be pooled across several training datasets)."""
-    dd = ds_data(name)
-    Fin, Fout, Gf, Uf, V_traj = dd["controls"]
+    dd = ds_data(name); Fin, Fout, Gf, Uf, V_traj = dd["controls"]
     np.random.seed(args.seed)
     enkf = EnsembleKalmanFilter(cfg.STATE_NUM, MEAS)
     enkf.x = dd["x0"].copy(); enkf.Q = Q.copy(); enkf.R = R.copy(); enkf.H = H.copy()
-    enkf.fx = model_step; enkf.dt = dt_kf
-    enkf.process_noise_cv = dict(cv_idx)
+    enkf.fx = model_step; enkf.dt = dt_kf; enkf.process_noise_cv = dict(cv_idx)
     enkf.no_update_indices = set(no_update_indices); enkf.clip_indices = set(clip_indices)
     enkf.create_ensemble(ENS, P0)
     sq = [[] for _ in range(MEAS)]
@@ -233,10 +200,8 @@ def niv_sqnorm(name, cv_idx, Q, P0):
                       "Gal_feed": Gf[idx_A], "Urd_feed": Uf[idx_A]})
         if step_A in meas_time_to_index:
             b = meas_time_to_index[step_A]
-            Z = enkf.X @ enkf.H.T
-            zmean = Z.mean(axis=0); Ez = Z - zmean
-            S = (Ez.T @ Ez) / (ENS - 1) + R
-            dvec = dd["set_meas"][b] - zmean
+            Z = enkf.X @ enkf.H.T; zmean = Z.mean(axis=0); Ez = Z - zmean
+            S = (Ez.T @ Ez) / (ENS - 1) + R; dvec = dd["set_meas"][b] - zmean
             for j in range(MEAS):
                 if not np.isnan(dd["set_meas"][b, j]) and S[j, j] > 0:
                     sq[j].append(dvec[j] ** 2 / S[j, j])
@@ -244,14 +209,12 @@ def niv_sqnorm(name, cv_idx, Q, P0):
     return sq
 
 
-# ── Tuning on a training set ─────────────────────────────────────────────────
 def calibrate_cv(train_list):
-    """Fixed-point CV -> NIV=1, pooling innovations over all training datasets."""
+    """Fixed-point CV -> NIV=1 (alphas fixed at reference); returns cv, niv_history, flags."""
     cv = {s: cfg.PROCESS_NOISE_CV[s] for s in meas_names}
     capped = {s: False for s in meas_names}; floored = {s: False for s in meas_names}
-    Q = build_Q(cfg.PROCESS_NOISE_ALPHA_OBS, cfg.PROCESS_NOISE_ALPHA)  # alphas fixed here
-    P0 = P0_from(Q)
-    niv = np.full(MEAS, np.nan)
+    Q = build_Q(REF_OBS, REF_NSD); P0 = P0_from(Q)
+    hist = []
     for it in range(args.cv_iters):
         cv_idx = {cfg.STATE_NAMES.index(s): cv[s] for s in meas_names}
         pooled = [[] for _ in range(MEAS)]
@@ -260,12 +223,12 @@ def calibrate_cv(train_list):
             for j in range(MEAS):
                 pooled[j] += sq[j]
         niv = np.array([np.mean(v) if v else np.nan for v in pooled])
+        hist.append([float(v) for v in niv])
         done = True
         for j, s in enumerate(meas_names):
             if np.isnan(niv[j]):
                 continue
-            new = cv[s] * np.sqrt(niv[j])
-            new_c = float(np.clip(new, args.cv_min, args.cv_max))
+            new = cv[s] * np.sqrt(niv[j]); new_c = float(np.clip(new, args.cv_min, args.cv_max))
             capped[s] = bool(new > args.cv_max); floored[s] = bool(new < args.cv_min)
             if abs(niv[j] - 1.0) > args.cv_tol:
                 done = False
@@ -273,15 +236,14 @@ def calibrate_cv(train_list):
         print(f"      CV iter {it}: NIV=[" + ", ".join(f"{v:.2f}" for v in niv) + "]", flush=True)
         if done:
             break
-    return cv, {s: float(niv[j]) for j, s in enumerate(meas_names)}, capped, floored
+    niv_final = {s: hist[-1][j] for j, s in enumerate(meas_names)}
+    return cv, hist, niv_final, capped, floored
 
 
 def nsd_asn_metrics(name, mean_traj, std_traj):
-    dd = ds_data(name)
-    out = {}
+    dd = ds_data(name); out = {}
     for col, si in enumerate(nsd_state_idx):
-        meas = dd["nsd_meas"][:, col]
-        m = mean_traj[meas_grid_idx, si]; s = std_traj[meas_grid_idx, si]
+        meas = dd["nsd_meas"][:, col]; m = mean_traj[meas_grid_idx, si]; s = std_traj[meas_grid_idx, si]
         valid = ~np.isnan(meas) & (s > 0)
         if valid.sum() == 0:
             out[nsd_names[col]] = dict(rmse=np.nan, nrmse=np.nan, cov=np.nan, ss=np.nan); continue
@@ -299,163 +261,202 @@ def nsd_asn_metrics(name, mean_traj, std_traj):
     return out
 
 
-def mean_nsd_nrmse(train_list, cv_idx, alpha_obs, alpha_nsd):
-    Q = build_Q(alpha_obs, alpha_nsd); P0 = P0_from(Q)
-    vals = []
-    for name in train_list:
-        mt, st = enkf_pass(name, cv_idx, Q, P0)
-        met = nsd_asn_metrics(name, mt, st)
-        vals.append(np.nanmean([met[n]["nrmse"] for n in nsd_names]))
-    return float(np.mean(vals))
-
-
-def asn_nrmse(train_list, cv_idx, alpha_obs, alpha_nsd):
-    Q = build_Q(alpha_obs, alpha_nsd); P0 = P0_from(Q)
-    vals = []
-    for name in train_list:
-        mt, st = enkf_pass(name, cv_idx, Q, P0)
-        vals.append(nsd_asn_metrics(name, mt, st)["Asn"]["nrmse"])
-    return float(np.mean(vals))
-
-
-def select_alphas(train_list, cv_idx):
-    """Mode B: auto-select alpha_nsd (min mean NSD NRMSE) then alpha_obs (min Asn NRMSE)."""
-    a_nsd = min(NSD_GRID, key=lambda a: mean_nsd_nrmse(train_list, cv_idx, cfg.PROCESS_NOISE_ALPHA_OBS, a))
-    a_obs = min(OBS_GRID, key=lambda a: asn_nrmse(train_list, cv_idx, a, a_nsd))
-    return a_obs, a_nsd
-
-
-# ── Fold construction ─────────────────────────────────────────────────────────
 def folds():
     if args.train:
         if args.train not in DATASETS:
             raise SystemExit(f"--train {args.train} must be one of --folds {DATASETS}")
-        return [(args.train, [args.train], [x for x in DATASETS if x != args.train])]
+        base = [args.train]
+    else:
+        base = DATASETS
     if args.scheme == "rotate":
-        return [(d, [d], [x for x in DATASETS if x != d]) for d in DATASETS]
-    return [(d, [x for x in DATASETS if x != d], [d]) for d in DATASETS]  # loo
+        return [(d, [d], [x for x in DATASETS if x != d]) for d in base]
+    return [(d, [x for x in DATASETS if x != d], [d]) for d in base]  # loo
 
 
-def run_mode(mode):
-    out_dir = RESULTS_DIR / mode
-    (out_dir / "figures").mkdir(parents=True, exist_ok=True)
-    summ_path = out_dir / "summary.json"
-    # Always load an existing summary so single-fold (--train) runs ACCUMULATE across days;
-    # --resume additionally skips folds already present (below) instead of recomputing them.
-    summary = json.load(open(summ_path)) if summ_path.exists() else {"scheme": args.scheme, "mode": mode, "folds": {}}
+def save_pkl(obj, path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "wb") as f:
+        pickle.dump(obj, f)
+    os.replace(tmp, path)
 
-    for fid, train_list, val_list in folds():
-        if args.resume and fid in summary["folds"]:
-            print(f"  [{mode}] fold {fid}: cached, skip."); continue
-        print(f"\n  [{mode}] fold {fid}: train={train_list} validate={val_list}")
-        cv, niv, capped, floored = calibrate_cv(train_list)
+
+def meas_by_state(name):
+    dd = ds_data(name)
+    mbs = {i: (dd["set_meas"][:, i], dd["set_err"][:, i]) for i in range(MEAS)}
+    mbs[ASN] = (dd["asn_meas"], dd["asn_err"])
+    for j in range(n_nsd):
+        mbs[nsd_state_idx[j]] = (dd["nsd_meas"][:, j], dd["nsd_err"][:, j])
+    return mbs
+
+
+LEGEND = [Line2D([0], [0], color="red", lw=1.6, label="Open-loop model"),
+          Line2D([0], [0], color="steelblue", lw=2, label="EnKF mean"),
+          Patch(facecolor="steelblue", alpha=0.30, label=r"$\pm1\sigma$"),
+          Patch(facecolor="steelblue", alpha=0.15, label=r"$\pm2\sigma$"),
+          Line2D([0], [0], color="darkorange", marker="o", lw=0, ms=6, label="Measurements")]
+
+
+def allstate_grid(name, mt, st, model, title, out):
+    tds = T_model[::DOWN]; mbs = meas_by_state(name)
+    fig, axes = plt.subplots(5, 4, figsize=(20, 15)); axes = axes.flatten()
+    for si in range(cfg.STATE_NUM):
+        ax = axes[si]; m = mt[::DOWN, si]; s = st[::DOWN, si]
+        ax.fill_between(tds, np.maximum(m - 2 * s, 0), m + 2 * s, color="steelblue", alpha=0.15)
+        ax.fill_between(tds, np.maximum(m - s, 0), m + s, color="steelblue", alpha=0.30)
+        ax.plot(tds, m, color="steelblue", lw=2)
+        ax.plot(tds, model[::DOWN, si], color="red", lw=1.6)
+        if si in mbs:
+            v, e = mbs[si]
+            ax.errorbar(T_meas, v, yerr=e, fmt="o", color="darkorange", ms=4, capsize=2, elinewidth=1, zorder=5)
+        ax.set_title(cfg.STATE_NAMES[si] + ("" if si in mbs else "  (no meas)"), fontsize=11, fontweight="bold")
+        ax.set_xlabel("Time (h)", fontsize=9); ax.grid(alpha=0.15)
+    for k in range(cfg.STATE_NUM, len(axes)):
+        axes[k].set_visible(False)
+    fig.legend(handles=LEGEND, loc="lower center", ncol=5, fontsize=12, frameon=False, bbox_to_anchor=(0.5, -0.005))
+    fig.suptitle(title, fontsize=15, fontweight="bold", y=1.005)
+    plt.tight_layout(rect=[0, 0.03, 1, 1]); out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
+
+
+def overlay(train, kind, per_alpha, out):
+    """Overlay the +/-2 sigma envelopes across alpha for the scored states (NSDs or Asn)."""
+    states = nsd_names if kind == "nsd" else ["Asn"]
+    idxs = nsd_state_idx if kind == "nsd" else [ASN]
+    alphas = sorted(per_alpha)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(alphas)))
+    tds = T_model[::DOWN]; mbs = meas_by_state(train)
+    ncol = 4 if kind == "nsd" else 1
+    nrow = int(np.ceil(len(states) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(5.5 * ncol, 3.6 * nrow)); axes = np.atleast_1d(axes).flatten()
+    for j, (nm, si) in enumerate(zip(states, idxs)):
+        ax = axes[j]
+        for i, a in enumerate(alphas):
+            mt, st = per_alpha[a]
+            ax.plot(tds, (mt[:, si] + 2 * st[:, si])[::DOWN], color=colors[i], lw=1.1)
+            ax.plot(tds, np.maximum(mt[:, si] - 2 * st[:, si], 0)[::DOWN], color=colors[i], lw=1.1)
+        if si in mbs:
+            v, e = mbs[si]
+            ax.errorbar(T_meas, v, yerr=e, fmt="o", color="darkorange", ms=4, capsize=2, zorder=6)
+        ax.set_title(nm, fontsize=10, fontweight="bold"); ax.set_xlabel("Time (h)"); ax.set_ylabel("mM"); ax.grid(alpha=0.15)
+    for k in range(len(states), len(axes)):
+        axes[k].set_visible(False)
+    handles = [Line2D([0], [0], color=colors[i], lw=4, label=f"α={alphas[i]:g}") for i in range(len(alphas))]
+    handles += [Line2D([0], [0], color="darkorange", marker="o", lw=0, ms=6, label="measurements")]
+    fig.legend(handles=handles, loc="lower center", ncol=len(alphas) + 1, fontsize=10, frameon=False, bbox_to_anchor=(0.5, -0.03))
+    fig.suptitle(f"{kind.upper()} ±2σ bands vs alpha — train {train}", fontsize=14, fontweight="bold")
+    plt.tight_layout(rect=[0, 0.05, 1, 0.97]); out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
+
+
+# ── Stage: sweep ──────────────────────────────────────────────────────────────
+def sweep_alpha(train, cv_idx, kind, out_dir):
+    grid = OBS_GRID if kind == "obs" else NSD_GRID
+    per_alpha = {}
+    for a in grid:
+        Q = build_Q(a, REF_NSD) if kind == "obs" else build_Q(REF_OBS, a)
+        mt, st = enkf_pass(train, cv_idx, Q, P0_from(Q))
+        met = nsd_asn_metrics(train, mt, st)
+        per_alpha[a] = (mt, st)
+        save_pkl({"train": train, "kind": kind, "alpha": a, "T": T_model,
+                  "state_names": list(cfg.STATE_NAMES),
+                  "mean_trajectory": mt, "std_trajectory": st,
+                  "band_2sigma_lo": np.maximum(mt - 2 * st, 0.0), "band_2sigma_hi": mt + 2 * st,
+                  "model_trajectory": ds_data(train)["model"], "metrics": met},
+                 out_dir / "pkl" / f"alpha_{a:g}.pkl")
+        sc = met["Asn"] if kind == "obs" else {}
+        tag = f"Asn cov={met['Asn']['cov']:.0f}%" if kind == "obs" else \
+              f"meanNSD NRMSE={np.nanmean([met[n]['nrmse'] for n in nsd_names]):.2f} " \
+              f"cov={np.nanmean([met[n]['cov'] for n in nsd_names]):.0f}%"
+        print(f"      {kind} alpha={a:g}: {tag}", flush=True)
+    if not args.no_plots:
+        overlay(train, kind, per_alpha, out_dir / "figures" / f"{kind}_bands_vs_alpha.png")
+
+
+def stage_sweep():
+    for fid, train_list, _ in folds():
+        fdir = RUN / f"fold_{fid}"
+        done_marker = fdir / "cv" / "cv_final.json"
+        if args.resume and (fdir / "alpha_nsd" / "pkl" / f"alpha_{NSD_GRID[-1]:g}.pkl").exists():
+            print(f"\n[sweep] fold {fid}: complete, skip (resume)."); continue
+        print(f"\n[sweep] fold {fid}: train={train_list}")
+        # 1) CV calibration
+        cv, niv_hist, niv_final, capped, floored = calibrate_cv(train_list)
         cv_idx = {cfg.STATE_NAMES.index(s): cv[s] for s in meas_names}
-        if mode == "cv":
-            a_obs, a_nsd = cfg.PROCESS_NOISE_ALPHA_OBS, cfg.PROCESS_NOISE_ALPHA
-        else:
-            print("    selecting alphas on training set ...", flush=True)
-            a_obs, a_nsd = select_alphas(train_list, cv_idx)
-        print(f"    tuned: alpha_obs={a_obs:g} alpha_nsd={a_nsd:g}")
+        save_pkl_json = {"train": train_list, "cv": cv, "niv_final": niv_final,
+                         "niv_history": niv_hist, "capped": capped, "floored": floored,
+                         "cv_max": args.cv_max, "cv_min": args.cv_min}
+        (fdir / "cv").mkdir(parents=True, exist_ok=True)
+        json.dump(save_pkl_json, open(fdir / "cv" / "cv_final.json", "w"), indent=2)
+        mt, st = enkf_pass(train_list[0], cv_idx, build_Q(REF_OBS, REF_NSD), P0_from(build_Q(REF_OBS, REF_NSD)))
+        save_pkl({"train": train_list, "cv": cv, "mean_trajectory": mt, "std_trajectory": st,
+                  "model_trajectory": ds_data(train_list[0])["model"], "T": T_model,
+                  "state_names": list(cfg.STATE_NAMES)}, fdir / "cv" / "cv_trajectory.pkl")
+        if not args.no_plots:
+            hist = np.array(niv_hist)
+            fig, ax = plt.subplots(figsize=(9, 5.5))
+            for j, s in enumerate(meas_names):
+                ax.plot(range(hist.shape[0]), hist[:, j], marker="o", ms=4, label=s)
+            ax.axhline(1.0, color="k", ls="--", lw=1); ax.set_xlabel("iteration"); ax.set_ylabel("NIV")
+            ax.set_title(f"CV calibration (train {fid})"); ax.legend(ncol=4, fontsize=8); ax.grid(alpha=0.2)
+            (fdir / "cv" / "figures").mkdir(parents=True, exist_ok=True)
+            fig.tight_layout(); fig.savefig(fdir / "cv" / "figures" / "niv_convergence.png", dpi=150); plt.close(fig)
+        # 2) alpha_obs sweep, 3) alpha_nsd sweep (both on the training set, other tier at reference)
+        sweep_alpha(train_list[0], cv_idx, "obs", fdir / "alpha_obs")
+        sweep_alpha(train_list[0], cv_idx, "nsd", fdir / "alpha_nsd")
+        print(f"[sweep] fold {fid}: done -> {fdir}")
+    # write a picks.json template if none exists
+    tmpl = RUN / "picks.json"
+    if not tmpl.exists():
+        json.dump({fid: {"alpha_obs": REF_OBS, "alpha_nsd": REF_NSD} for fid, _, _ in folds()},
+                  open(tmpl, "w"), indent=2)
+        print(f"\nTemplate written: {tmpl}  (edit with your hand-picked alphas, then --stage validate)")
 
+
+# ── Stage: validate ───────────────────────────────────────────────────────────
+def stage_validate():
+    if not args.picks:
+        raise SystemExit("--stage validate needs --picks results_v1/picks.json")
+    picks = json.load(open(args.picks))
+    summary = {"scheme": args.scheme, "folds": {}}
+    (RUN / "summary").mkdir(parents=True, exist_ok=True)
+    for fid, train_list, val_list in folds():
+        fdir = RUN / f"fold_{fid}"
+        cvj = json.load(open(fdir / "cv" / "cv_final.json"))
+        cv = cvj["cv"]; cv_idx = {cfg.STATE_NAMES.index(s): cv[s] for s in meas_names}
+        a_obs = float(picks[fid]["alpha_obs"]); a_nsd = float(picks[fid]["alpha_nsd"])
         Q = build_Q(a_obs, a_nsd); P0 = P0_from(Q)
+        print(f"\n[validate] fold {fid}: train={train_list} α_obs={a_obs:g} α_nsd={a_nsd:g} -> {val_list}")
         heldout = {}
-        payload = {"fold": fid, "train": train_list, "validate": val_list,
-                   "cv": cv, "niv": niv, "capped": capped, "floored": floored,
-                   "alpha_obs": a_obs, "alpha_nsd": a_nsd, "T": T_model,
-                   "state_names": list(cfg.STATE_NAMES), "val": {}}
         for name in val_list:
             mt, st = enkf_pass(name, cv_idx, Q, P0)
-            met = nsd_asn_metrics(name, mt, st)
-            heldout[name] = met
-            payload["val"][name] = {
-                "mean_trajectory": mt, "std_trajectory": st,
-                "band_2sigma_lo": np.maximum(mt - 2 * st, 0.0), "band_2sigma_hi": mt + 2 * st,
-                "model_trajectory": ds_data(name)["model"], "metrics": met,
-            }
+            met = nsd_asn_metrics(name, mt, st); heldout[name] = met
+            save_pkl({"fold": fid, "train": train_list, "held_out": name,
+                      "cv": cv, "alpha_obs": a_obs, "alpha_nsd": a_nsd, "T": T_model,
+                      "state_names": list(cfg.STATE_NAMES),
+                      "mean_trajectory": mt, "std_trajectory": st,
+                      "band_2sigma_lo": np.maximum(mt - 2 * st, 0.0), "band_2sigma_hi": mt + 2 * st,
+                      "model_trajectory": ds_data(name)["model"], "metrics": met},
+                     fdir / "validation" / f"heldout_{name}.pkl")
+            if not args.no_plots:
+                allstate_grid(name, mt, st, ds_data(name)["model"],
+                              f"Validate — trained {fid} (α_nsd={a_nsd:g}, α_obs={a_obs:g}), held-out {name}",
+                              fdir / "validation" / "figures" / f"heldout_{name}.png")
             print(f"      held-out {name}: mean NSD NRMSE="
-                  f"{np.nanmean([met[n]['nrmse'] for n in nsd_names]):.3f}  "
-                  f"Asn NRMSE={met['Asn']['nrmse']:.3f}")
-        with open(out_dir / f"fold_{fid}.pkl", "wb") as f:
-            pickle.dump(payload, f)
+                  f"{np.nanmean([met[n]['nrmse'] for n in nsd_names]):.3f} cov="
+                  f"{np.nanmean([met[n]['cov'] for n in nsd_names]):.0f}%  Asn NRMSE={met['Asn']['nrmse']:.3f}")
         summary["folds"][fid] = {"train": train_list, "validate": val_list,
-                                 "cv": cv, "niv": niv, "capped": capped, "floored": floored,
-                                 "alpha_obs": a_obs, "alpha_nsd": a_nsd, "heldout": heldout}
-        tmp = summ_path.with_suffix(".json.tmp")
-        json.dump(summary, open(tmp, "w"), indent=2); os.replace(tmp, summ_path)  # atomic checkpoint
-    return summary
+                                 "alpha_obs": a_obs, "alpha_nsd": a_nsd, "cv": cv, "heldout": heldout}
+        json.dump(summary, open(RUN / "summary" / "validation_summary.json", "w"), indent=2)
+    print(f"\n[validate] done. Summary: {RUN / 'summary' / 'validation_summary.json'}")
 
 
-# ── Run the requested mode(s) ────────────────────────────────────────────────
-for m in MODES:
-    run_mode(m)
-
-# Load EVERY mode summary present on disk (so A and B run on separate days still compare).
-all_summ = {}
-for m in ("cv", "all"):
-    sp = RESULTS_DIR / m / "summary.json"
-    if sp.exists():
-        all_summ[m] = json.load(open(sp))
-present = [m for m in ("cv", "all") if m in all_summ]
-
-# ── Report ─────────────────────────────────────────────────────────────────
-def held_agg(summary):
-    """mean held-out NSD NRMSE / coverage / Asn NRMSE across all folds' held-out sets."""
-    nrmse, cov, asn = [], [], []
-    for fd in summary["folds"].values():
-        for m in fd["heldout"].values():
-            nrmse.append(np.nanmean([m[n]["nrmse"] for n in nsd_names]))
-            cov.append(np.nanmean([m[n]["cov"] for n in nsd_names]))
-            asn.append(m["Asn"]["nrmse"])
-    return (np.nanmean(nrmse), np.nanmean(cov), np.nanmean(asn))
-
-print("\n" + "=" * 78)
-for m in present:
-    nr, cv_, asn = held_agg(all_summ[m])
-    lbl = "A (CVs only)" if m == "cv" else "B (CVs + alpha)"
-    print(f"  retune={m:3s} [{lbl}]  held-out mean NSD NRMSE={nr:.3f}  cov={cv_:.0f}%  Asn NRMSE={asn:.3f}")
+# ── Dispatch ──────────────────────────────────────────────────────────────────
 print("=" * 78)
-if len(present) == 2:
-    comp = {m: dict(zip(("nsd_nrmse", "nsd_cov", "asn_nrmse"), held_agg(all_summ[m]))) for m in present}
-    json.dump(comp, open(RESULTS_DIR / "comparison.json", "w"), indent=2)
-    print(f"A-vs-B comparison written: {RESULTS_DIR / 'comparison.json'}")
+print(f"Full-fold CV  stage={args.stage}  scheme={args.scheme}  N={ENS}  run={RUN.name}"
+      + (f"  train={args.train}" if args.train else ""))
+print("=" * 78)
+if args.stage == "sweep":
+    stage_sweep()
 else:
-    print(f"(Run the other mode later to get the A-vs-B comparison; have: {present})")
-
-# ── Plots ────────────────────────────────────────────────────────────────
-if not args.no_plots:
-    for m in present:
-        S = all_summ[m]; fids = list(S["folds"].keys())
-        # parameter stability: CV per measured state across folds
-        fig, ax = plt.subplots(figsize=(10, 5))
-        for s in meas_names:
-            ax.plot(fids, [S["folds"][f]["cv"][s] for f in fids], "o-", label=s)
-        ax.set_ylabel("calibrated CV"); ax.set_xlabel("fold (training set)")
-        ax.set_title(f"CV parameter stability across folds — retune={m}, scheme={args.scheme}")
-        ax.legend(ncol=4, fontsize=8); ax.grid(alpha=0.2)
-        fig.tight_layout(); fig.savefig(RESULTS_DIR / m / "figures" / "cv_param_stability.png", dpi=150)
-        plt.close(fig)
-        # held-out NSD NRMSE + coverage per fold
-        fig, axs = plt.subplots(1, 2, figsize=(13, 4.5))
-        for f in fids:
-            for name, met in S["folds"][f]["heldout"].items():
-                axs[0].scatter(f, np.nanmean([met[n]["nrmse"] for n in nsd_names]), color="tab:red")
-                axs[1].scatter(f, np.nanmean([met[n]["cov"] for n in nsd_names]), color="tab:blue")
-        axs[0].set_title("held-out mean NSD NRMSE"); axs[1].set_title("held-out mean 2σ coverage %")
-        axs[1].axhline(95, ls=":", color="gray")
-        for ax in axs:
-            ax.set_xlabel("fold (training set)"); ax.grid(alpha=0.2)
-        fig.suptitle(f"Held-out generalization — retune={m}, scheme={args.scheme}", fontweight="bold")
-        fig.tight_layout(rect=[0, 0, 1, 0.95])
-        fig.savefig(RESULTS_DIR / m / "figures" / "cv_heldout_metrics.png", dpi=150); plt.close(fig)
-
-    if len(present) == 2:
-        fig, ax = plt.subplots(figsize=(7, 5))
-        labels = ["mean NSD NRMSE", "mean NSD cov %/100", "Asn NRMSE"]
-        for m in present:
-            nr, cv_, asn = held_agg(all_summ[m])
-            ax.plot(labels, [nr, cv_ / 100, asn], "o-", label=f"retune={m}")
-        ax.set_title(f"A vs B held-out (scheme={args.scheme})"); ax.legend(); ax.grid(alpha=0.2)
-        fig.tight_layout(); fig.savefig(RESULTS_DIR / "figures_compare_A_vs_B.png", dpi=150)
-        plt.close(fig)
-
-print(f"\nDone. Results in {RESULTS_DIR}")
+    stage_validate()

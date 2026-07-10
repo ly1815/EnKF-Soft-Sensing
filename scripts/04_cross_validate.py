@@ -92,6 +92,12 @@ p.add_argument("--cv-min", default=1e-4, type=float)
 p.add_argument("--cv-tol", default=0.15, type=float)
 p.add_argument("--obs-alphas", default="0.001,0.002,0.004,0.006,0.008,0.01")
 p.add_argument("--nsd-alphas", default="0.005,0.0075,0.01,0.02,0.03,0.04")
+p.add_argument("--ref-alpha-obs", default=0.002, type=float,
+               help="fixed alpha_obs during CV calibration and as the other tier while "
+                    "sweeping alpha_nsd (matters: Asn/Glu are upstream)")
+p.add_argument("--ref-alpha-nsd", default=0.02, type=float,
+               help="fixed alpha_nsd during CV calibration and as the other tier while "
+                    "sweeping alpha_obs (NSDs are downstream, so essentially inert here)")
 p.add_argument("--seed", default=42, type=int)
 p.add_argument("--traj-down", default=20, type=int)
 p.add_argument("--no-plots", action="store_true")
@@ -111,8 +117,8 @@ n_nsd = 7
 nsd_state_idx = list(range(cfg.STATE_NUM - n_nsd, cfg.STATE_NUM))
 nsd_names = [cfg.STATE_NAMES[i] for i in nsd_state_idx]
 ASN = cfg.STATE_NAMES.index("Asn")
-REF_OBS = cfg.PROCESS_NOISE_ALPHA_OBS
-REF_NSD = cfg.PROCESS_NOISE_ALPHA
+REF_OBS = args.ref_alpha_obs
+REF_NSD = args.ref_alpha_nsd
 
 # ── Fixed grids / matrices ────────────────────────────────────────────────────
 time_grid = np.arange(cfg.DT, cfg.T_END + cfg.DT, cfg.DT)

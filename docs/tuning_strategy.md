@@ -88,23 +88,41 @@ per-pass calls (long runs previously OOM-ed).
 
 ---
 
-## 4. Stage 4 — additive α by BAND CALIBRATION (not NRMSE)
+## 4. Stage 4 — additive α by a principled trade-off (never argmin-NRMSE)
 
 The NSDs (and Asn/Glu) are **not assimilated** — there is no innovation, so NIV is undefined
-for them. α is the only handle on their uncertainty band. It is selected to **calibrate that
-band** — coverage → ~target, spread-skill (mean std / RMSE) → ~1 on the states we can
-actually cover — **not** to minimise NRMSE.
+for them. α is the only handle on their uncertainty band. It is **never** chosen by minimising
+NRMSE: argmin-NRMSE always picks the *smallest* α — a tight band that hugs the point estimates
+but ignores whether it *covers* the data (empirically the narrowest α gives ~30 % coverage, a
+grossly over-confident band). NRMSE is used only as an accuracy *guard rail*, not as the thing
+being minimised.
 
-**Why not NRMSE.** NRMSE (accuracy) is monotonically minimised by the *smallest* α — a tight
-band hugs the point estimates but ignores whether it *covers* the data. Argmin-NRMSE therefore
-picks the narrowest, most over-confident band (empirically α_nsd → 0.005, coverage ~46 %).
-NRMSE is the wrong objective for an uncertainty band; it is reported as a *secondary* diagnostic
-only. Calibration is the selection criterion.
+The two tiers use trade-off rules matched to their role, both selected on the training set of
+each fold and reported as a single shared **rule**:
 
-**Two tiers, tuned in order (Asn/Glu upstream of NSDs):**
-- **α_obs** (Asn & Glu share it): sweep, inspect the Asn band vs measurements, pick the α that
-  calibrates it. (Glu has no measurements; it rides the same α_obs.)
-- **α_nsd** (7 NSDs): sweep, inspect the bands, pick the α that calibrates the *tractable* NSDs.
+- **α_obs** (Asn & Glu share it; Glu has no measurements and rides along). Asn's NRMSE over the
+  sweep is **non-monotone** — its minimum is at the *smallest* α (an over-confident band,
+  ~28–37 % coverage), and it rises sharply just above the calibrated region. So α_obs is set by
+  an **accuracy-guarded width rule**:
+
+  > **α_obs = the largest α whose Asn NRMSE stays within 25 % of its minimum-achievable value**
+  > — i.e. the widest band we can afford before accuracy degrades sharply, maximising coverage
+  > subject to a near-optimal point estimate.
+
+  The knee is unambiguous: at the selected α the NRMSE is ~1.13× the minimum, while the next
+  grid step jumps to ~1.44×, so any tolerance in **[15 %, 43 %]** gives the same pick in all
+  four folds. This rule selects **α_obs = 0.002** for P1–P4 (the value coincides; the *rule* is
+  what is shared). Choosing α_obs carries **no downstream cost**: a controlled test
+  (`scripts/test_asn_alpha_on_nsd.py`, α_obs 0.002 → 0.01 at fixed CVs and α_nsd) showed the
+  NSD accuracy is unchanged (mean NSD NRMSE flat) and the coverage change is small and
+  inconsistent in sign across folds — Asn/Glu process noise does not propagate materially into
+  the downstream NSD estimates, so the two tiers are **empirically independent** and α_obs is a
+  pure Asn choice.
+
+- **α_nsd** (7 NSDs — the reported soft-sensor outputs): selected by **band calibration** —
+  coverage → ~target and spread-skill (mean std / RMSE) → ~1 on the states we can actually
+  cover — because honest uncertainty on the sensor outputs is what matters, and (unlike Asn)
+  the NSDs have no clean NRMSE knee to exploit. *(Rule pending inspection of the α_nsd sweep.)*
 
 **Structural limitations disclosed (no α fixes these):**
 - **UDP-GalNAc** — model overpredicts; raising α widens the band *upward*, away from the data.
@@ -200,7 +218,9 @@ These are reported honestly rather than masked by inflated noise or fitted R.
 ## 10. Status
 
 - Stages 0–3 (R, P0, noise model, CV calibration incl. cap 0.006, odeint) — settled.
-- Stage 4 α — **being re-derived by band calibration** via the full-fold sweep (`results_v1/`),
-  replacing the earlier NRMSE-based selection. Per-fold α + the shared rule pending inspection.
+- Stage 4 **α_obs — settled**: accuracy-guarded width rule → **0.002** all folds (see §4),
+  confirmed downstream-inert on the NSDs. Recorded in `results_v1/picks.json`.
+- Stage 4 **α_nsd — pending**: band-calibration rule to be fixed after inspecting the
+  `results_v1/fold_*/alpha_nsd` sweep figures; then written into `picks.json`.
 - Stage 5 (N = 100) — verified.
-- Full-fold CV — pipeline built (`04` two-stage); sweep pending, then pick + validate.
+- Full-fold CV — pipeline built (`04` two-stage); α_obs picked, α_nsd + validate pending.

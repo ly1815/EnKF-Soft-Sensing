@@ -1,4 +1,6 @@
 {
+  "_alpha_obs_rule": "alpha_obs = largest alpha whose Asn NRMSE stays within 25% of its minimum-achievable value (widest band affordable before accuracy degrades sharply). Robustly selects 0.002 in every fold (0.002 is ~1.13x min NRMSE; 0.004 jumps to ~1.44x). Confirmed downstream-inert on the NSDs by scripts/test_asn_alpha_on_nsd.py.",
+  "_alpha_nsd_status": "PENDING selection (placeholder 0.02). alpha_nsd rule to be fixed after inspecting results_v1/fold_*/alpha_nsd figures.",
   "P1": {
     "alpha_obs": 0.002,
     "alpha_nsd": 0.02

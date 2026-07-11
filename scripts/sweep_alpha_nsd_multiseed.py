@@ -15,11 +15,12 @@ Seeds: seed 42 reproduces the existing single-seed results_v1 nsd pkls bit-for-b
 check); the default set is 42..42+N-1. This reuses the EXACT machinery of 04_cross_validate.py
 (same matrices, same enkf call) so nothing about the filter changes — only the averaging.
 
-Saved under --out (default results_v1), per fold, in alpha_nsd_ms/:
-    pkl/alpha_<a>_seed_<s>.pkl   per-run: mean_traj + std_traj + metrics  (float32, resumable)
-    agg/alpha_<a>.pkl            all seeds stacked + seed-averaged mean/std + between-seed
-                                 spread + per-seed metrics + metrics-on-average
-    figures/nsd_alpha_<a>.png    paper-style 7-NSD grid on the seed-averaged posterior
+Saved under --out (default results_multirun_nsd/), per fold:
+    fold_<X>/pkl/alpha_<a>_seed_<s>.pkl  per-run: mean_traj + std_traj + metrics (float32, resumable)
+    fold_<X>/agg/alpha_<a>.pkl           all seeds stacked + seed-averaged mean/std + between-seed
+                                         spread + per-seed metrics + metrics-on-average
+    fold_<X>/figures/nsd_alpha_<a>.png   paper-style 7-NSD grid on the seed-averaged posterior
+    summary.pkl                          seed-averaged calibration for all folds/alphas
 
 Usage (macOS venv):
   # all four folds, 10 seeds, full grid incl 0.05 (long; run per fold / overnight):
@@ -69,7 +70,7 @@ p.add_argument("--n-runs", default=10, type=int, help="number of stochastic runs
 p.add_argument("--seed-base", default=42, type=int, help="seeds = seed_base .. seed_base+n_runs-1")
 p.add_argument("--seeds", default=None, help="explicit CSV of seeds (overrides n-runs/seed-base)")
 p.add_argument("--cv-run", default="results_v1", help="run dir holding fold_*/cv/cv_final.json")
-p.add_argument("--out", default="results_v1", help="output run dir (writes fold_*/alpha_nsd_ms/)")
+p.add_argument("--out", default="results_multirun_nsd", help="output run dir (writes fold_*/)")
 p.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 p.add_argument("--archive-down", default=1, type=int, help="downsample factor for per-seed archive (1=full)")
 p.add_argument("--traj-down", default=10, type=int, help="downsample factor for figures")
@@ -249,7 +250,7 @@ def nsd_figure(name, a, mt, st, model, n_seeds, out):
 # ── run ─────────────────────────────────────────────────────────────────────────
 print("=" * 82)
 print(f"MULTI-SEED alpha_nsd sweep  |  seeds={SEEDS}  N_ens={ENS}  alpha_obs={A_OBS:g}")
-print(f"grid={NSD_GRID}  datasets={DATASETS}  out={OUT.name}/fold_*/alpha_nsd_ms/")
+print(f"grid={NSD_GRID}  datasets={DATASETS}  out={OUT.name}/fold_*/")
 print("=" * 82)
 
 selection = {}  # fold -> {alpha: metrics_on_average}
@@ -259,7 +260,7 @@ for name in DATASETS:
         raise SystemExit(f"missing calibrated CVs: {cv_json} — run 04 --stage sweep --train {name} first")
     cv = json.load(open(cv_json))["cv"]
     cv_idx = {cfg.STATE_NAMES.index(s): cv[s] for s in meas_names}
-    ms_dir = OUT / f"fold_{name}" / "alpha_nsd_ms"
+    ms_dir = OUT / f"fold_{name}"
     selection[name] = {}
     print(f"\n[{name}] calibrated CVs loaded; {len(NSD_GRID)} alphas x {len(SEEDS)} seeds")
     for a in NSD_GRID:
@@ -337,7 +338,7 @@ summ("nrmse", "NRMSE", "guard rail")
 
 save_pkl({"seeds": SEEDS, "alpha_obs": A_OBS, "grid": NSD_GRID, "reported": REPORTED,
           "selection_metrics_on_average": selection},
-         OUT / "alpha_nsd_ms_summary.pkl")
-print(f"\nSaved per-seed + aggregate pkls under {OUT}/fold_*/alpha_nsd_ms/ ; "
-      f"summary -> {OUT/'alpha_nsd_ms_summary.pkl'}")
+         OUT / "summary.pkl")
+print(f"\nSaved per-seed + aggregate pkls under {OUT}/fold_*/ ; "
+      f"summary -> {OUT/'summary.pkl'}")
 print("Done.")

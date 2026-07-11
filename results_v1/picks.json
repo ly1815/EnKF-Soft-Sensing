@@ -1,0 +1,18 @@
+{
+  "P1": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  },
+  "P2": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  },
+  "P3": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  },
+  "P4": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  }
+}

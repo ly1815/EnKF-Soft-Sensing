@@ -1,7 +1,7 @@
 """
 plot_cross_validation.py  —  plot held-out trajectories from a 04_cross_validate run
 ====================================================================================
-Reads results/<run>/<mode>/fold_*.pkl and draws, for every (training fold x held-out
+Reads results_legacy/cross_validation/fold_*.pkl and draws, for every (training fold x held-out
 dataset), an all-17-state grid: EnKF posterior mean, +/-1 sigma and +/-2 sigma ensemble
 bands, the open-loop model, and the measurements. Pure plotting from the saved pkls — no
 EnKF re-run. This is the cross-validation analogue of the per-dataset Option-B figures:
@@ -36,7 +36,7 @@ p.add_argument("--mode", default="cv", choices=["cv", "all"])
 p.add_argument("--traj-down", default=20, type=int)
 args = p.parse_args()
 
-RES = cfg.PROJECT_ROOT / "results" / args.run / args.mode
+RES = cfg.PROJECT_ROOT / "results_legacy" / args.run / args.mode
 FIG = RES / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
 DOWN = max(int(args.traj_down), 1)

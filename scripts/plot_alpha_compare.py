@@ -7,7 +7,7 @@ alpha, colored low->high, with the open-loop model and measurements. Lets you co
 glance how the band widens with alpha and where it covers the data.
 
 Usage (macOS venv):
-    ./.venv/bin/python scripts/plot_alpha_compare.py --pkl-dir results/legacy/alpha_nsd/pkl
+    ./.venv/bin/python scripts/plot_alpha_compare.py --pkl-dir results_legacy/tests/alpha_nsd/pkl
 """
 
 import argparse
@@ -28,7 +28,7 @@ from matplotlib.lines import Line2D
 import nsd_enkf.config as cfg
 
 p = argparse.ArgumentParser(description="Overlay NSD +/-2 sigma bands across swept alpha values")
-p.add_argument("--pkl-dir", default="results/legacy/alpha_nsd/pkl")
+p.add_argument("--pkl-dir", default="results_legacy/tests/alpha_nsd/pkl")
 p.add_argument("--out", default=None)
 p.add_argument("--traj-down", default=20, type=int)
 args = p.parse_args()

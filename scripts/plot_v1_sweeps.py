@@ -5,10 +5,10 @@ For each fold and EACH swept alpha, emit a single figure in the nsd_enkf.plottin
 style (identical fonts / legend / band shading):
   * alpha_nsd/figures/nsd_alpha_<a>.png  — the 7 NSDs (2x4), mean + ±1/2σ bands + model + meas
   * alpha_obs/figures/asn_alpha_<a>.png  — Asn, same style
-Plotted from the results_v1 sweep pkls (training-set trajectory + measurements). No re-run.
+Plotted from the results_single_sweep sweep pkls (training-set trajectory + measurements). No re-run.
 
 Usage:
-    ./.venv/bin/python scripts/plot_v1_sweeps.py --run results_v1
+    ./.venv/bin/python scripts/plot_v1_sweeps.py --run results_single_sweep
 """
 
 import argparse
@@ -32,7 +32,7 @@ import nsd_enkf.config as cfg
 from nsd_enkf.data_loader import load_dataset
 
 p = argparse.ArgumentParser(description="One paper-style figure per swept alpha (NSD + Asn)")
-p.add_argument("--run", default="results_v1")
+p.add_argument("--run", default="results_single_sweep")
 p.add_argument("--downsample", default=10, type=int)
 p.add_argument("--dpi", default=200, type=int)
 args = p.parse_args()

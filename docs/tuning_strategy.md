@@ -135,7 +135,7 @@ NSDs (which reach 82–100 % coverage at α_nsd ≈ 0.03).
 
 ## 5. Full-fold cross-validation (the validation)
 
-**Script:** `04_cross_validate.py`, two stages, output under `results_v1/`.
+**Script:** `04_cross_validate.py`, two stages, output under `results_single_sweep/`.
 
 **Principle — per-fold independent tuning; a shared rule, not a shared value.** For each fold
 (training set P_k), the filter is tuned entirely on P_k — its own calibrated CVs *and* its own
@@ -150,7 +150,7 @@ full 17-state mean/std trajectory + uncertainty bands + metrics as pkl, plus ove
 Nothing is auto-selected.
 
 **Inspect → pick → derive the rule:** inspect the per-fold overlays, hand-pick each fold's
-α (recorded in `results_v1/picks.json`), and articulate the single criterion that reproduces
+α (recorded in `results_single_sweep/picks.json`), and articulate the single criterion that reproduces
 those picks (e.g. "smallest α whose median spread-skill on the tractable NSDs ≥ threshold").
 
 **Stage `validate`:** each fold loads *its own* CVs + *its own* picked α and applies them to
@@ -219,8 +219,8 @@ These are reported honestly rather than masked by inflated noise or fitted R.
 
 - Stages 0–3 (R, P0, noise model, CV calibration incl. cap 0.006, odeint) — settled.
 - Stage 4 **α_obs — settled**: accuracy-guarded width rule → **0.002** all folds (see §4),
-  confirmed downstream-inert on the NSDs. Recorded in `results_v1/picks.json`.
+  confirmed downstream-inert on the NSDs. Recorded in `results_single_sweep/picks.json`.
 - Stage 4 **α_nsd — pending**: band-calibration rule to be fixed after inspecting the
-  `results_v1/fold_*/alpha_nsd` sweep figures; then written into `picks.json`.
+  `results_single_sweep/fold_*/alpha_nsd` sweep figures; then written into `picks.json`.
 - Stage 5 (N = 100) — verified.
 - Full-fold CV — pipeline built (`04` two-stage); α_obs picked, α_nsd + validate pending.

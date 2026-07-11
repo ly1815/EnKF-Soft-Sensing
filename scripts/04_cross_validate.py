@@ -17,19 +17,19 @@ Two stages:
      During each sweep the other tier sits at a reference value; the exact picked pair is
      only applied at validation. Nothing auto-selected — you inspect and hand-pick.
 
-  --stage validate --picks results_v1/picks.json
+  --stage validate --picks results_single_sweep/picks.json
      * for each fold: load ITS calibrated CVs and ITS hand-picked (alpha_obs, alpha_nsd),
        apply to the held-out datasets, save all-state bands + metrics + grids.
 
 Everything is saved as pkl for full offline recovery (re-plot / re-derive any statistic
-without re-running). Output goes under --run (default: results_v1/).
+without re-running). Output goes under --run (default: results_single_sweep/).
 
 picks.json format (fill in after inspecting the sweeps):
   { "P1": {"alpha_obs": 0.002, "alpha_nsd": 0.03},
     "P2": {"alpha_obs": 0.002, "alpha_nsd": 0.02}, ... }
 
 Layout:
-  results_v1/
+  results_single_sweep/
     fold_<X>/cv/            NIV log, cv_final.json, trajectory pkl, convergence figure
     fold_<X>/alpha_obs/     per-alpha pkl (all 17 states) + figures + overlay
     fold_<X>/alpha_nsd/     per-alpha pkl (all 17 states) + figures + overlay
@@ -43,9 +43,9 @@ Usage (macOS venv):
   # Stage 1 — sweep + save everything, one fold at a time (accumulates):
   caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --stage sweep --train P4
   #   then --train P1 / P2 / P3   (or drop --train to do all four in one ~12h run)
-  # ... inspect results_v1/fold_*/{alpha_obs,alpha_nsd}/figures, write results_v1/picks.json ...
+  # ... inspect results_single_sweep/fold_*/{alpha_obs,alpha_nsd}/figures, write results_single_sweep/picks.json ...
   # Stage 2 — validate each fold at its picked alpha on its held-out sets:
-  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --stage validate --picks results_v1/picks.json
+  caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --stage validate --picks results_single_sweep/picks.json
 """
 
 import argparse
@@ -83,7 +83,7 @@ p.add_argument("--stage", required=True, choices=["sweep", "validate"])
 p.add_argument("--folds", default="P1,P2,P3,P4")
 p.add_argument("--scheme", default="rotate", choices=["rotate", "loo"])
 p.add_argument("--train", default=None, help="restrict to the single fold training on this dataset")
-p.add_argument("--run", default="results_v1")
+p.add_argument("--run", default="results_single_sweep")
 p.add_argument("--picks", default=None, help="validate stage: json {fold: {alpha_obs, alpha_nsd}}")
 p.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 p.add_argument("--cv-iters", default=8, type=int)
@@ -422,7 +422,7 @@ def stage_sweep():
 # ── Stage: validate ───────────────────────────────────────────────────────────
 def stage_validate():
     if not args.picks:
-        raise SystemExit("--stage validate needs --picks results_v1/picks.json")
+        raise SystemExit("--stage validate needs --picks results_single_sweep/picks.json")
     picks = json.load(open(args.picks))
     summary = {"scheme": args.scheme, "folds": {}}
     (RUN / "summary").mkdir(parents=True, exist_ok=True)

@@ -9,10 +9,10 @@ improve the downstream NSD estimates even though the NSDs' own alpha_nsd is unch
 This runs 4 quick EnKF passes (one per dataset P1-P4) at:
     alpha_obs = 0.01   (loose Asn/Glu)      [--alpha-obs to change]
     alpha_nsd = 0.02   (held fixed)         [--alpha-nsd to change]
-    measured CVs      = each fold's CALIBRATED values from results_v1/fold_*/cv/cv_final.json
+    measured CVs      = each fold's CALIBRATED values from results_single_sweep/fold_*/cv/cv_final.json
 
 and compares the resulting NSD metrics to the existing baseline sweep pkl
-    results_v1/fold_<P>/alpha_nsd/pkl/alpha_0.02.pkl   (same CVs, same alpha_nsd, alpha_obs=0.002)
+    results_single_sweep/fold_<P>/alpha_nsd/pkl/alpha_0.02.pkl   (same CVs, same alpha_nsd, alpha_obs=0.002)
 so the ONLY thing that differs between test and baseline is alpha_obs.
 
 Self-contained: reuses nsd_enkf exactly as 04_cross_validate.py does (same seed, same
@@ -59,7 +59,7 @@ p = argparse.ArgumentParser(description="Quick test: does bigger alpha_obs impro
 p.add_argument("--datasets", default="P1,P2,P3,P4")
 p.add_argument("--alpha-obs", default=0.01, type=float)
 p.add_argument("--alpha-nsd", default=0.02, type=float)
-p.add_argument("--cv-run", default="results_v1", help="run dir holding fold_*/cv/cv_final.json")
+p.add_argument("--cv-run", default="results_single_sweep", help="run dir holding fold_*/cv/cv_final.json")
 p.add_argument("--out", default="results_asn_alpha0.01")
 p.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 p.add_argument("--seed", default=42, type=int)

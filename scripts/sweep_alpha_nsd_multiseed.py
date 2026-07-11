@@ -8,10 +8,10 @@ seeds per (fold, alpha), records EVERY run's full trajectory, and reports metric
 SEED-AVERAGED posterior — the legitimate stochastic estimate.
 
 For each dataset (fold) it loads that fold's CALIBRATED measured CVs from
-results_v1/fold_<X>/cv/cv_final.json and holds alpha_obs = 0.002 (the adopted value), then
+results_single_sweep/fold_<X>/cv/cv_final.json and holds alpha_obs = 0.002 (the adopted value), then
 sweeps alpha_nsd over the grid (0.05 added) at N seeds each.
 
-Seeds: seed 42 reproduces the existing single-seed results_v1 nsd pkls bit-for-bit (sanity
+Seeds: seed 42 reproduces the existing single-seed results_single_sweep nsd pkls bit-for-bit (sanity
 check); the default set is 42..42+N-1. This reuses the EXACT machinery of 04_cross_validate.py
 (same matrices, same enkf call) so nothing about the filter changes — only the averaging.
 
@@ -69,7 +69,7 @@ p.add_argument("--alpha-obs", default=0.002, type=float)
 p.add_argument("--n-runs", default=10, type=int, help="number of stochastic runs (distinct seeds)")
 p.add_argument("--seed-base", default=42, type=int, help="seeds = seed_base .. seed_base+n_runs-1")
 p.add_argument("--seeds", default=None, help="explicit CSV of seeds (overrides n-runs/seed-base)")
-p.add_argument("--cv-run", default="results_v1", help="run dir holding fold_*/cv/cv_final.json")
+p.add_argument("--cv-run", default="results_single_sweep", help="run dir holding fold_*/cv/cv_final.json")
 p.add_argument("--out", default="results_multirun_nsd", help="output run dir (writes fold_*/)")
 p.add_argument("--ensemble-size", default=cfg.ENSEMBLE_SIZE, type=int)
 p.add_argument("--archive-down", default=1, type=int, help="downsample factor for per-seed archive (1=full)")

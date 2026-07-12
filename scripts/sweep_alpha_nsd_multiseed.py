@@ -78,6 +78,17 @@ p.add_argument("--dpi", default=200, type=int)
 p.add_argument("--no-plots", action="store_true")
 p.add_argument("--resume", action="store_true", default=True)
 p.add_argument("--no-resume", dest="resume", action="store_false")
+# ── auto-reject + resample (option B) ──────────────────────────────────────────
+p.add_argument("--auto-reject", action="store_true",
+               help="reject divergent replicates (pool-relative peak-sigma outliers) and "
+                    "resample fresh seeds until --target-good clean runs are collected")
+p.add_argument("--reject-mult", default=3.0, type=float,
+               help="a run is divergent if any unmeasured state's peak posterior sigma exceeds "
+                    "this multiple of the across-run median peak sigma (default 3.0)")
+p.add_argument("--target-good", default=None, type=int,
+               help="number of clean (non-divergent) replicates required (default: --n-runs)")
+p.add_argument("--max-seeds", default=40, type=int,
+               help="safety cap on how many candidate seeds to try when resampling")
 args = p.parse_args()
 
 DATASETS = [d for d in args.datasets.split(",") if d]
@@ -118,6 +129,8 @@ scale_vec = np.zeros(cfg.STATE_NUM)
 for s, sc in cfg.PROCESS_NOISE_SCALE.items():
     scale_vec[cfg.STATE_NAMES.index(s)] = sc
 obs_idx = [cfg.STATE_NAMES.index(s) for s in getattr(cfg, "ALPHA_OBS_STATES", ["Asn", "Glu"])]
+unmeas_idx = obs_idx + nsd_state_idx          # Asn, Glu + 7 NSDs — states used for the divergence gate
+TARGET_GOOD = args.target_good if args.target_good is not None else args.n_runs
 P0_meas = np.array([cfg.MEASUREMENT_NOISE_VAR.get(s, 0.0) for s in cfg.STATE_NAMES])
 T_meas = np.array(cfg.T_MEAS_FIXED)
 meas_grid_idx = [min(int(round(t / dt_kf)) + 1, N_kf) for t in T_meas]
@@ -247,9 +260,89 @@ def nsd_figure(name, a, mt, st, model, n_seeds, out):
     fig.savefig(out, dpi=args.dpi, bbox_inches="tight"); plt.close(fig)
 
 
+# ── per-seed compute/cache (resume: never re-run a seed already on disk) ─────────
+def get_seed(name, a, seed, cv_idx, Q, P0, ms_dir):
+    """Return (mean_traj, std_traj, metrics, tag) for one seed, from cache or a fresh run."""
+    seed_pkl = ms_dir / "pkl" / f"alpha_{a:g}_seed_{seed}.pkl"
+    if args.resume and seed_pkl.exists():
+        dd = pickle.load(open(seed_pkl, "rb"))
+        return (np.asarray(dd["mean_trajectory"], dtype=np.float64),
+                np.asarray(dd["std_trajectory"], dtype=np.float64), dd["metrics"], "cached")
+    t0 = time.time()
+    mt, st = enkf_pass_seeded(name, seed, cv_idx, Q, P0)
+    met = nsd_asn_metrics(name, mt, st)
+    save_pkl({"dataset": name, "alpha_nsd": a, "alpha_obs": A_OBS, "seed": seed,
+              "cv": {s: cv_idx[cfg.STATE_NAMES.index(s)] for s in meas_names},
+              "T": T_model[::ADOWN], "state_names": list(cfg.STATE_NAMES),
+              "mean_trajectory": mt[::ADOWN].astype(np.float32),
+              "std_trajectory": st[::ADOWN].astype(np.float32),
+              "metrics": met}, seed_pkl)
+    return mt, st, met, f"{time.time()-t0:.0f}s"
+
+
+def collect_seeds(name, a, cv_idx, Q, P0, ms_dir):
+    """Return (used_seeds, rejected, means, stds, per_seed_met) for one (fold, alpha).
+
+    Default: the fixed SEEDS list. With --auto-reject: draw candidate seeds in order,
+    reject pool-relative peak-sigma outliers (divergent runs), and keep drawing fresh
+    seeds until TARGET_GOOD clean replicates are collected. Cached seeds are never re-run.
+    """
+    if not args.auto_reject:
+        pool = {s: get_seed(name, a, s, cv_idx, Q, P0, ms_dir) for s in SEEDS}
+        for s in SEEDS:
+            m = pool[s][2]
+            print(f"    alpha={a:g} seed={s}: reported cov="
+                  f"{np.nanmean([m[r]['cov'] for r in REPORTED]):.0f}% "
+                  f"ss={np.nanmean([m[r]['ss'] for r in REPORTED]):.2f}  [{pool[s][3]}]", flush=True)
+        return (list(SEEDS), [], [pool[s][0] for s in SEEDS],
+                [pool[s][1] for s in SEEDS], [pool[s][2] for s in SEEDS])
+
+    # --auto-reject: pool-relative divergence gate + resample
+    pool = {}                      # seed -> (mt, st, met, tag)
+    peak = {}                      # seed -> {state_idx: peak sigma}
+    cand = args.seed_base
+    cap = args.seed_base + args.max_seeds
+    def gate():
+        med = {i: float(np.median([peak[s][i] for s in pool])) for i in unmeas_idx}
+        good, rej = [], []
+        for s in sorted(pool):
+            bad = any(peak[s][i] > args.reject_mult * med[i] and med[i] > 0 for i in unmeas_idx)
+            (rej if bad else good).append(s)
+        return good, rej
+    while True:
+        while len(pool) < TARGET_GOOD and cand < cap:
+            mt, st, met, tag = get_seed(name, a, cand, cv_idx, Q, P0, ms_dir)
+            pool[cand] = (mt, st, met, tag)
+            peak[cand] = {i: float(st[:, i].max()) for i in unmeas_idx}
+            print(f"    alpha={a:g} seed={cand}: reported cov="
+                  f"{np.nanmean([met[r]['cov'] for r in REPORTED]):.0f}% "
+                  f"ss={np.nanmean([met[r]['ss'] for r in REPORTED]):.2f}  [{tag}]", flush=True)
+            cand += 1
+        good, rej = gate()
+        if len(good) >= TARGET_GOOD or cand >= cap:
+            break
+        # not enough clean runs — draw one more candidate and re-gate
+        mt, st, met, tag = get_seed(name, a, cand, cv_idx, Q, P0, ms_dir)
+        pool[cand] = (mt, st, met, tag)
+        peak[cand] = {i: float(st[:, i].max()) for i in unmeas_idx}
+        print(f"    alpha={a:g} seed={cand}: reported cov="
+              f"{np.nanmean([met[r]['cov'] for r in REPORTED]):.0f}% "
+              f"ss={np.nanmean([met[r]['ss'] for r in REPORTED]):.2f}  [{tag}]", flush=True)
+        cand += 1
+    used = good[:TARGET_GOOD]
+    if rej:
+        print(f"    alpha={a:g}: REJECTED divergent seeds {rej}; using {used}", flush=True)
+    if len(used) < TARGET_GOOD:
+        print(f"    alpha={a:g}: WARNING only {len(used)}/{TARGET_GOOD} clean seeds within "
+              f"--max-seeds={args.max_seeds}", flush=True)
+    return (used, rej, [pool[s][0] for s in used],
+            [pool[s][1] for s in used], [pool[s][2] for s in used])
+
+
 # ── run ─────────────────────────────────────────────────────────────────────────
 print("=" * 82)
-print(f"MULTI-SEED alpha_nsd sweep  |  seeds={SEEDS}  N_ens={ENS}  alpha_obs={A_OBS:g}")
+mode = f"AUTO-REJECT (C={args.reject_mult:g}, target={TARGET_GOOD})" if args.auto_reject else f"seeds={SEEDS}"
+print(f"MULTI-SEED alpha_nsd sweep  |  {mode}  N_ens={ENS}  alpha_obs={A_OBS:g}")
 print(f"grid={NSD_GRID}  datasets={DATASETS}  out={OUT.name}/fold_*/")
 print("=" * 82)
 
@@ -262,33 +355,15 @@ for name in DATASETS:
     cv_idx = {cfg.STATE_NAMES.index(s): cv[s] for s in meas_names}
     ms_dir = OUT / f"fold_{name}"
     selection[name] = {}
-    print(f"\n[{name}] calibrated CVs loaded; {len(NSD_GRID)} alphas x {len(SEEDS)} seeds")
+    print(f"\n[{name}] calibrated CVs loaded; {len(NSD_GRID)} alphas"
+          + (f" x >={TARGET_GOOD} clean seeds (auto-reject)" if args.auto_reject
+             else f" x {len(SEEDS)} seeds"))
+    fold_manifest = {}
     for a in NSD_GRID:
         Q = build_Q(A_OBS, a); P0 = P0_from(Q)
-        means = []; stds = []; per_seed_met = []
-        for seed in SEEDS:
-            seed_pkl = ms_dir / "pkl" / f"alpha_{a:g}_seed_{seed}.pkl"
-            if args.resume and seed_pkl.exists():
-                dd = pickle.load(open(seed_pkl, "rb"))
-                mt = np.asarray(dd["mean_trajectory"], dtype=np.float64)
-                st = np.asarray(dd["std_trajectory"], dtype=np.float64)
-                met = dd["metrics"]
-                tag = "cached"
-            else:
-                t0 = time.time()
-                mt, st = enkf_pass_seeded(name, seed, cv_idx, Q, P0)
-                met = nsd_asn_metrics(name, mt, st)
-                save_pkl({"dataset": name, "alpha_nsd": a, "alpha_obs": A_OBS, "seed": seed,
-                          "cv": cv, "T": T_model[::ADOWN], "state_names": list(cfg.STATE_NAMES),
-                          "mean_trajectory": mt[::ADOWN].astype(np.float32),
-                          "std_trajectory": st[::ADOWN].astype(np.float32),
-                          "metrics": met}, seed_pkl)
-                tag = f"{time.time()-t0:.0f}s"
-            means.append(mt); stds.append(st); per_seed_met.append(met)
-            print(f"    alpha={a:g} seed={seed}: reported cov="
-                  f"{np.nanmean([met[s]['cov'] for s in REPORTED]):.0f}% "
-                  f"ss={np.nanmean([met[s]['ss'] for s in REPORTED]):.2f}  [{tag}]", flush=True)
-        M = np.stack(means); S = np.stack(stds)         # [n_seeds, T, 17]
+        used_seeds, rejected, means, stds, per_seed_met = collect_seeds(name, a, cv_idx, Q, P0, ms_dir)
+        fold_manifest[f"{a:g}"] = {"used": used_seeds, "rejected": rejected}
+        M = np.stack(means); S = np.stack(stds)         # [n_good, T, 17]
         avg_mean = M.mean(axis=0); avg_std = S.mean(axis=0)
         between_seed_std = M.std(axis=0)                 # seed sensitivity of the posterior mean
         met_avg = nsd_asn_metrics(name, avg_mean, avg_std)
@@ -298,7 +373,8 @@ for name in DATASETS:
                               std=float(np.nanstd([m[st_][key] for m in per_seed_met])))
                     for st_ in list(nsd_names) + ["Asn"]}
         met_seed = {k: stack_metric(k) for k in ("cov", "ss", "nrmse", "rmse")}
-        save_pkl({"dataset": name, "alpha_nsd": a, "alpha_obs": A_OBS, "seeds": SEEDS,
+        save_pkl({"dataset": name, "alpha_nsd": a, "alpha_obs": A_OBS,
+                  "seeds": used_seeds, "rejected_seeds": rejected,
                   "cv": cv, "T": T_model[::ADOWN], "state_names": list(cfg.STATE_NAMES),
                   "all_mean_trajectories": M[:, ::ADOWN].astype(np.float32),
                   "all_std_trajectories": S[:, ::ADOWN].astype(np.float32),
@@ -312,12 +388,17 @@ for name in DATASETS:
                  ms_dir / "agg" / f"alpha_{a:g}.pkl")
         selection[name][a] = met_avg
         if not args.no_plots:
-            nsd_figure(name, a, avg_mean, avg_std, ds_static(name)["model"], len(SEEDS),
+            nsd_figure(name, a, avg_mean, avg_std, ds_static(name)["model"], len(used_seeds),
                        ms_dir / "figures" / f"nsd_alpha_{a:g}.png")
-        print(f"  => alpha={a:g} SEED-AVG reported: cov="
+        print(f"  => alpha={a:g} SEED-AVG ({len(used_seeds)} runs) reported: cov="
               f"{np.nanmean([met_avg[s]['cov'] for s in REPORTED]):.1f}% "
               f"ss={np.nanmean([met_avg[s]['ss'] for s in REPORTED]):.2f} "
               f"nrmse={np.nanmean([met_avg[s]['nrmse'] for s in REPORTED]):.2f}", flush=True)
+    if args.auto_reject:
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        json.dump({"reject_mult": args.reject_mult, "target_good": TARGET_GOOD,
+                   "per_alpha": fold_manifest}, open(ms_dir / "seed_selection.json", "w"), indent=2)
+        print(f"  [{name}] seed-selection manifest -> {ms_dir / 'seed_selection.json'}")
 
 # ── seed-averaged calibration summary (reported NSDs) ───────────────────────────
 def summ(metric, label, tgt):
@@ -336,7 +417,9 @@ summ("cov", "2sigma coverage %", "~95")
 summ("ss", "spread-skill std/RMSE", "~1.0")
 summ("nrmse", "NRMSE", "guard rail")
 
-save_pkl({"seeds": SEEDS, "alpha_obs": A_OBS, "grid": NSD_GRID, "reported": REPORTED,
+save_pkl({"alpha_obs": A_OBS, "grid": NSD_GRID, "reported": REPORTED,
+          "auto_reject": args.auto_reject, "reject_mult": args.reject_mult,
+          "target_good": TARGET_GOOD, "candidate_seed_base": args.seed_base,
           "selection_metrics_on_average": selection},
          OUT / "summary.pkl")
 print(f"\nSaved per-seed + aggregate pkls under {OUT}/fold_*/ ; "

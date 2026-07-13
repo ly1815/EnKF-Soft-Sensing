@@ -375,10 +375,13 @@ PROCESS_NOISE_CV = {
 # so they share the smaller PROCESS_NOISE_ALPHA_OBS. ALPHA_OBS is calibrated separately from
 # the NSD alpha because the NSD pathway is downstream of Asn (no feedback), so it is set by
 # an Asn-only sweep (scripts/tune_alpha_asn.py); Asn and Glu share the value.
-PROCESS_NOISE_ALPHA = 0.01       # NSDs; per-step, confirmed on the adopted CVs via
-                                 # scripts/tune_alpha_nsd.py (P4 sweep 0.005-0.04)
-PROCESS_NOISE_ALPHA_OBS = 0.002  # Asn, Glu; calibrated on P4 via the Asn sweep
-                                 # (scripts/tune_alpha_asn.py; bioprocessing judgement)
+PROCESS_NOISE_ALPHA = 0.02       # NSDs; per-step. Finalised on the seed-averaged multi-seed
+                                 # sweep (scripts/sweep_alpha_nsd_multiseed.py --auto-reject,
+                                 # 10 clean replicates): smallest alpha where reported-NSD mean
+                                 # spread-skill reaches ~1 (>=0.95); NRMSE knee at 0.03. Selects
+                                 # 0.02 in every CV fold (see docs/final_parameters.md).
+PROCESS_NOISE_ALPHA_OBS = 0.002  # Asn, Glu; largest alpha within 25% of min Asn NRMSE
+                                 # (accuracy-guarded width; downstream-inert on the NSDs)
 ALPHA_OBS_STATES = ['Asn', 'Glu']
 
 # Median magnitude per state (measurement median, pooled P1-P4; Glu = open-loop

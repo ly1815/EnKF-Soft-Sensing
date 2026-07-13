@@ -8,8 +8,13 @@ Directly targets Reviewer 2.1 (is N=100 justified? sensitivity, instability) and
 Reviewer 3.4 (does the ensemble keep meaningful spread / stay calibrated, not just
 accurate in the mean?).
 
-For each ensemble size N, N_RUNS independent EnKF passes are run on P4 with the
-exact production settings pulled from config:
+For each ensemble size N, TARGET_GOOD independent EnKF passes (distinct seeds, seed =
+--seed-offset + i) are run on P4 with the exact production settings pulled from config.
+Divergent replicates are rejected (pool-relative peak-sigma outlier rule, per size, C=3x
+the across-run median — identical to the tuning/validation sweeps) and resampled to
+TARGET_GOOD clean runs (--no-reject to disable). The per-size divergence count is itself a
+reported result: small N is where blow-ups happen, which is the core R2.1 stability point.
+Production settings:
   - measured states  -> multiplicative CV noise (PROCESS_NOISE_CV)
   - unmeasured states -> additive two-stage-alpha noise (PROCESS_NOISE_VAR)
   - IQR clipping on CLIP_STATES, localization on NO_UPDATE_STATES
@@ -21,15 +26,26 @@ Metrics per size (mean +/- std across runs):
   Asn      : normalised RMSE
   cost     : wall-clock seconds per pass
 
-Crash-safe: results are saved after every run; --resume continues from the exact
-run left off (per-size pkl holds the runs done so far), so a kill costs <=1 pass.
+Crash-safe: results are saved after every pass; --resume continues from where it left off
+(per-size pkl is a {seed: run} cache holding every pass drawn, including rejected ones so
+they are never recomputed), so a kill costs <=1 pass. Used/rejected seeds per size are
+written to seed_selection.json.
+
+Output (default --out results_multirun_ensemble_size/):
+    ensemble_N<N>.pkl                {seed: run} cache — EVERY pass drawn (incl. rejected),
+                                     each run carries its downsampled mean+std trajectory
+    all_trajectories.pkl             combined archive: mean + spread of every clean run of
+                                     every size + filter-config provenance (P4 tuning set)
+    ensemble_sensitivity_summary.pkl per-size mean/std metrics + divergence counts
+    seed_selection.json              used / rejected seeds per size
+    ensemble_size_sensitivity.png    6-panel sensitivity + calibration figure
 
 Usage (macOS venv):
-    # Default sweep — N in {25,50,100,150,200}, 10 seeds each:
-    caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py --n-runs 10 --run ensemble_sens
+    # Default sweep — N in {25,50,100,150,200}, 10 clean seeds each, divergence rejection on:
+    caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py --n-runs 10 --resume
 
-    # Resume a killed/interrupted run (each run is saved as it finishes; kill costs <=1 pass):
-    caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py --n-runs 10 --run ensemble_sens --resume
+    # Resume a killed/interrupted run (each pass is saved as it finishes; kill costs <=1 pass):
+    #   just re-run the same command — --resume skips passes already on disk.
 
     # Full-resolution trajectories instead of x20 downsampled: --traj-down 1
 
@@ -44,6 +60,7 @@ trajectory-level statistic can be recomputed later without re-running. Pass
 """
 
 import argparse
+import json
 import pickle
 import sys
 import time
@@ -70,22 +87,36 @@ from nsd_enkf.enkf import EnsembleKalmanFilter
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 p = argparse.ArgumentParser(description="Ensemble-size sensitivity + calibration on P4")
-p.add_argument("--run", default="ensemble_sens")
-p.add_argument("--dataset", default="P4")
+p.add_argument("--run", default="ensemble_sens", help="label used in console output only")
+p.add_argument("--out", default="results_multirun_ensemble_size",
+               help="output folder (under project root unless absolute)")
+p.add_argument("--dataset", default="P4",
+               help="tuning set: config.py holds the P4-fold calibration (CVs + alphas)")
 p.add_argument("--sizes", default="25,50,100,150,200")
 p.add_argument("--n-runs", default=10, type=int)
 p.add_argument("--seed-offset", default=42, type=int)
-p.add_argument("--resume", action="store_true", help="skip sizes whose pkl already exists")
+p.add_argument("--resume", action="store_true", help="skip passes already on disk (per-seed cache)")
 p.add_argument("--traj-down", default=20, type=int,
                help="also save per-run mean/std trajectories downsampled by this factor "
                     "(0 = metrics only, no trajectories)")
+p.add_argument("--no-reject", dest="auto_reject", action="store_false", default=True,
+               help="disable divergent-replicate rejection (default: on, matching the tuning/"
+                    "validation sweeps)")
+p.add_argument("--reject-mult", default=3.0, type=float,
+               help="reject a pass if any unmeasured state's peak sigma exceeds this multiple of "
+                    "the across-run median peak, per ensemble size (default 3.0)")
+p.add_argument("--target-good", default=None, type=int,
+               help="clean replicates required per size (default --n-runs)")
+p.add_argument("--max-seeds", default=40, type=int,
+               help="cap on seeds drawn per size while resampling to --target-good clean runs")
 args = p.parse_args()
 
 DS = args.dataset
 SIZES = [int(x) for x in args.sizes.split(",")]
 N_RUNS = args.n_runs
+TARGET_GOOD = args.target_good if args.target_good is not None else N_RUNS
 
-OUT_DIR = cfg.PROJECT_ROOT / "results" / args.run / "ensemble_sensitivity"
+OUT_DIR = Path(args.out) if Path(args.out).is_absolute() else cfg.PROJECT_ROOT / args.out
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def save_pkl(obj, name):
@@ -96,7 +127,10 @@ def save_pkl(obj, name):
 
 print("=" * 64)
 print(f"Ensemble-size sensitivity  [run={args.run}, dataset={DS}]")
-print(f"  sizes = {SIZES} | runs/size = {N_RUNS}")
+print(f"  sizes = {SIZES} | clean runs/size = {TARGET_GOOD} | seeds from {args.seed_offset}")
+print(f"  divergence rejection: " + (f"ON (peak sigma > {args.reject_mult}x per-size median, "
+                                     f"resample <= {args.max_seeds} seeds)"
+                                     if args.auto_reject else "OFF (--no-reject)"))
 print(f"  trajectories: " + (f"saved, downsampled x{args.traj_down}"
                              if args.traj_down > 0 else "not saved (metrics only)"))
 print("=" * 64)
@@ -145,6 +179,11 @@ n_nsd = nsd_vals.shape[1]
 nsd_state_idx = list(range(cfg.STATE_NUM - n_nsd, cfg.STATE_NUM))
 nsd_names = [cfg.STATE_NAMES[i] for i in nsd_state_idx]
 ASN_IDX = cfg.STATE_NAMES.index("Asn")
+
+# Divergence gate operates on the unmeasured states (observable-unmeasured Asn/Glu + the 7 NSDs) —
+# identical rule to the tuning/validation sweeps: pool-relative peak-sigma outlier, per ensemble size.
+obs_idx = [cfg.STATE_NAMES.index(s) for s in getattr(cfg, "ALPHA_OBS_STATES", ["Asn", "Glu"])]
+unmeas_idx = obs_idx + nsd_state_idx
 
 # Normalisation scales = median |measurement| per state
 def med_scale(v):
@@ -237,6 +276,9 @@ def run_pass(N, seed):
         asn_nrmse = np.nan
 
     out = {
+        "seed": int(seed),
+        # peak (over time) ensemble std per unmeasured state — input to the divergence gate
+        "peak_sigma": {i: float(std_traj[:, i].max()) for i in unmeas_idx},
         "wall_time_s": wall,
         "meas_nrmse_mean": np.mean(m_nrmse), "meas_nis_mean": np.mean(m_nis),
         "meas_cov_mean": np.nanmean(m_cov),
@@ -269,29 +311,119 @@ def run_pass(N, seed):
     return out
 
 
-# ── Sweep (save after every run; resumable at run granularity) ───────────────
-all_results = {}
+# ── Sweep (per-seed cache; divergence gate + resample; resumable at pass granularity) ─
+def load_pool(pkl_path):
+    """Return {seed: run_dict} of already-computed passes for a size (resume)."""
+    if not (args.resume and pkl_path.exists()):
+        return {}
+    with open(pkl_path, "rb") as f:
+        obj = pickle.load(f)
+    if isinstance(obj, dict):                       # current format: seed -> run
+        return {int(k): v for k, v in obj.items()}
+    return {args.seed_offset + i: r for i, r in enumerate(obj)}   # legacy list -> sequential seeds
+
+
+def gate(pool):
+    """Pool-relative peak-sigma outlier rule, per size (identical to tuning/validation)."""
+    med = {i: float(np.median([pool[s]["peak_sigma"][i] for s in pool])) for i in unmeas_idx}
+    good, rej = [], []
+    for s in sorted(pool):
+        ps = pool[s]["peak_sigma"]
+        bad = any(ps[i] > args.reject_mult * med[i] and med[i] > 0 for i in unmeas_idx)
+        (rej if bad else good).append(s)
+    return good, rej
+
+
+all_results = {}                                    # N -> list of the TARGET_GOOD clean runs
+selection = {}                                      # N -> {"used": [...], "rejected": [...]}
 for N in SIZES:
     pkl_name = f"ensemble_N{N}.pkl"
     pkl_path = OUT_DIR / pkl_name
-    runs = []
-    if args.resume and pkl_path.exists():
-        with open(pkl_path, "rb") as f:
-            runs = pickle.load(f)
-        if len(runs) >= N_RUNS:
-            all_results[N] = runs[:N_RUNS]
-            print(f"\n  N={N}: loaded {N_RUNS} runs from disk (resume).")
-            continue
-        print(f"\n  N={N}: resuming — {len(runs)}/{N_RUNS} runs already on disk.", flush=True)
-    else:
-        print(f"\n  N={N}:", flush=True)
-    for run_i in range(len(runs), N_RUNS):
-        res = run_pass(N, args.seed_offset + run_i)   # seed = offset+run_i -> deterministic resume
-        runs.append(res)
-        print(f"    run {run_i+1}/{N_RUNS}: {res['wall_time_s']:.0f}s  "
+    pool = load_pool(pkl_path)
+    print(f"\n  N={N}:" + (f" resuming — {len(pool)} pass(es) cached." if pool else ""), flush=True)
+
+    def add(seed):
+        res = run_pass(N, seed)
+        pool[seed] = res
+        save_pkl(pool, pkl_name)                    # crash-safe: persist after EVERY pass
+        print(f"    seed {seed}: {res['wall_time_s']:.0f}s  "
               f"NIS={res['meas_nis_mean']:.2f} NSD-ss={res['nsd_ss_median']:.2f}", flush=True)
-        save_pkl(runs, pkl_name)      # crash-safe: persist after EVERY run (kill costs <=1 pass)
-    all_results[N] = runs
+
+    if not args.auto_reject:
+        for seed in range(args.seed_offset, args.seed_offset + N_RUNS):
+            if seed not in pool:
+                add(seed)
+        used = list(range(args.seed_offset, args.seed_offset + N_RUNS))
+        rej = []
+    else:
+        cand = args.seed_offset
+        while cand in pool:
+            cand += 1
+        cap = args.seed_offset + args.max_seeds
+        while True:                                 # draw until TARGET_GOOD clean, then verify gate
+            while len(pool) < TARGET_GOOD and cand < cap:
+                add(cand); cand += 1
+            good, rej = gate(pool)
+            if len(good) >= TARGET_GOOD or cand >= cap:
+                break
+            add(cand); cand += 1
+        used = good[:TARGET_GOOD]
+        if rej:
+            print(f"    N={N}: REJECTED divergent seed(s) {rej} "
+                  f"({len(rej)}/{len(pool)} drawn); using {used}", flush=True)
+        if len(used) < TARGET_GOOD:
+            print(f"    N={N}: WARNING only {len(used)}/{TARGET_GOOD} clean seeds within "
+                  f"--max-seeds={args.max_seeds}", flush=True)
+
+    all_results[N] = [pool[s] for s in used]
+    selection[N] = {"used": used, "rejected": rej, "n_drawn": len(pool)}
+
+# ── Divergence / seed-selection manifest ─────────────────────────────────────
+save_pkl({str(N): selection[N] for N in SIZES}, "seed_selection.pkl")
+with open(OUT_DIR / "seed_selection.json", "w") as f:
+    json.dump({"reject_mult": args.reject_mult if args.auto_reject else None,
+               "target_good": TARGET_GOOD, "auto_reject": bool(args.auto_reject),
+               "sizes": {str(N): selection[N] for N in SIZES}}, f, indent=2)
+
+# ── Combined trajectory archive: mean + spread of EVERY (clean) run, all sizes ──
+# One self-contained pkl carrying the seed-averaging inputs for the whole sweep. Rejected
+# passes are NOT dropped from disk — they remain in each ensemble_N<N>.pkl {seed: run} cache.
+_MET_KEYS = ["wall_time_s", "meas_nrmse_mean", "meas_nis_mean", "meas_cov_mean",
+             "nsd_nrmse_mean", "nsd_ss_median", "asn_nrmse"]
+combined = {
+    "dataset": DS,
+    "sizes": SIZES,
+    "state_names": list(cfg.STATE_NAMES),
+    "reject_mult": args.reject_mult if args.auto_reject else None,
+    "target_good": TARGET_GOOD,
+    "provenance": {                                  # exact filter config these runs used
+        "tuning_set": "P4-fold calibration (adopted production config, nsd_enkf/config.py)",
+        "process_noise_cv": dict(cfg.PROCESS_NOISE_CV),
+        "alpha_obs": float(cfg.PROCESS_NOISE_ALPHA_OBS),
+        "alpha_nsd": float(cfg.PROCESS_NOISE_ALPHA),
+        "ensemble_dt": cfg.DT, "T_end": cfg.T_END,
+    },
+    "runs": {},                                      # N -> {used_seeds, rejected_seeds, runs:[...]}
+}
+for N in SIZES:
+    entries = []
+    for r in all_results[N]:
+        e = {"seed": r["seed"],
+             "metrics": {k: r[k] for k in _MET_KEYS if k in r},
+             "nsd_nrmse": r.get("nsd_nrmse"), "nsd_cov": r.get("nsd_cov"),
+             "nsd_ss": r.get("nsd_ss")}
+        if "traj" in r:                              # mean trajectory + spread (std), downsampled
+            e["T"] = r["traj"]["T"]
+            e["mean"] = r["traj"]["mean"]            # (M, 17) ensemble mean
+            e["std"] = r["traj"]["std"]              # (M, 17) ensemble std = uncertainty band
+        entries.append(e)
+    combined["runs"][N] = {"used_seeds": selection[N]["used"],
+                           "rejected_seeds": selection[N]["rejected"], "runs": entries}
+save_pkl(combined, "all_trajectories.pkl")
+n_traj = sum(len(combined["runs"][N]["runs"]) for N in SIZES)
+print(f"\nSaved combined trajectory archive: {OUT_DIR / 'all_trajectories.pkl'} "
+      f"({n_traj} runs across {len(SIZES)} sizes)"
+      + ("" if args.traj_down > 0 else "  [NOTE: --traj-down 0 -> no trajectories stored]"))
 
 # ── Aggregate ────────────────────────────────────────────────────────────────
 def agg(N, key):
@@ -299,7 +431,8 @@ def agg(N, key):
 
 summary = []
 for N in SIZES:
-    row = {"N": N}
+    row = {"N": N, "n_used": len(all_results[N]), "n_rejected": len(selection[N]["rejected"]),
+           "n_drawn": selection[N]["n_drawn"], "rejected_seeds": selection[N]["rejected"]}
     for key in ["wall_time_s", "meas_nrmse_mean", "meas_nis_mean", "meas_cov_mean",
                 "nsd_nrmse_mean", "nsd_ss_median", "asn_nrmse"]:
         v = agg(N, key)
@@ -310,17 +443,23 @@ for N in SIZES:
     summary.append(row)
 save_pkl(summary, "ensemble_sensitivity_summary.pkl")
 
-print("\n" + "=" * 88)
-print(f"{'N':>5s} | {'Time(s)':>9s} | {'NIS':>9s} | {'MetNRMSE':>10s} | {'MetCov%':>9s} | "
-      f"{'NSD_NRMSE':>10s} | {'NSD_ss':>8s}")
-print("-" * 88)
+print("\n" + "=" * 100)
+print(f"{'N':>5s} | {'used/div':>9s} | {'Time(s)':>9s} | {'NIS':>9s} | {'MetNRMSE':>10s} | "
+      f"{'MetCov%':>9s} | {'NSD_NRMSE':>10s} | {'NSD_ss':>8s}")
+print("-" * 100)
 for s in summary:
-    print(f"{s['N']:>5d} | {s['wall_time_s_mean']:>4.0f}±{s['wall_time_s_std']:>3.0f} | "
+    print(f"{s['N']:>5d} | {s['n_used']:>3d}/{s['n_rejected']:<5d} | "
+          f"{s['wall_time_s_mean']:>4.0f}±{s['wall_time_s_std']:>3.0f} | "
           f"{s['meas_nis_mean_mean']:>4.2f}±{s['meas_nis_mean_std']:>3.2f} | "
           f"{s['meas_nrmse_mean_mean']:>10.4f} | "
           f"{s['meas_cov_mean_mean']:>4.0f}±{s['meas_cov_mean_std']:>3.0f} | "
           f"{s['nsd_nrmse_mean_mean']:>10.4f} | "
           f"{s['nsd_ss_median_mean']:>4.2f}±{s['nsd_ss_median_std']:>3.2f}")
+if args.auto_reject:
+    print(f"\n  divergence rejection ON (peak sigma > {args.reject_mult}x per-size median);"
+          f" 'used/div' = clean runs kept / divergent seeds rejected.")
+else:
+    print("\n  divergence rejection OFF (--no-reject): all seeds aggregated.")
 
 # ── Figure ───────────────────────────────────────────────────────────────────
 Ns = [s["N"] for s in summary]

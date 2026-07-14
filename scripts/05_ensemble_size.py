@@ -178,6 +178,12 @@ meas_grid_idx = [min(int(round(t / dt_kf)) + 1, N_kf) for t in T_meas]  # post-u
 n_nsd = nsd_vals.shape[1]
 nsd_state_idx = list(range(cfg.STATE_NUM - n_nsd, cfg.STATE_NUM))
 nsd_names = [cfg.STATE_NAMES[i] for i in nsd_state_idx]
+
+# Reported NSDs — the three reliably-measured nucleotide sugars used for the NSD
+# calibration summary throughout the paper (UDP-Gal, UDP-Glc, UDP-GlcNAc). The
+# figure's NSD panels and the console NSD columns are restricted to these.
+REPORTED_NSD = [n for n in ["UDPGal", "UDPGlc", "UDPGlcNAc"] if n in nsd_names]
+REPORTED_LABEL = {"UDPGal": "UDP-Gal", "UDPGlc": "UDP-Glc", "UDPGlcNAc": "UDP-GlcNAc"}
 ASN_IDX = cfg.STATE_NAMES.index("Asn")
 
 # Divergence gate operates on the unmeasured states (observable-unmeasured Asn/Glu + the 7 NSDs) —
@@ -440,12 +446,21 @@ for N in SIZES:
     for name in nsd_names:
         v = np.array([r["nsd_nrmse"][name] for r in all_results[N]])
         row[f"nsd_{name}_mean"] = np.nanmean(v); row[f"nsd_{name}_std"] = np.nanstd(v)
+    # Reported-NSD aggregates: mean over the 3 reported deposits, per run, then across runs
+    rep_nrmse = np.array([np.nanmean([r["nsd_nrmse"][n] for n in REPORTED_NSD])
+                          for r in all_results[N]])
+    rep_ss = np.array([np.nanmean([r["nsd_ss"][n] for n in REPORTED_NSD])
+                       for r in all_results[N]])
+    row["nsd_nrmse_reported_mean"] = np.nanmean(rep_nrmse)
+    row["nsd_nrmse_reported_std"] = np.nanstd(rep_nrmse)
+    row["nsd_ss_reported_mean"] = np.nanmean(rep_ss)
+    row["nsd_ss_reported_std"] = np.nanstd(rep_ss)
     summary.append(row)
 save_pkl(summary, "ensemble_sensitivity_summary.pkl")
 
 print("\n" + "=" * 100)
 print(f"{'N':>5s} | {'used/div':>9s} | {'Time(s)':>9s} | {'NIS':>9s} | {'MetNRMSE':>10s} | "
-      f"{'MetCov%':>9s} | {'NSD_NRMSE':>10s} | {'NSD_ss':>8s}")
+      f"{'MetCov%':>9s} | {'rNSD_NRMSE':>10s} | {'rNSD_ss':>8s}")
 print("-" * 100)
 for s in summary:
     print(f"{s['N']:>5d} | {s['n_used']:>3d}/{s['n_rejected']:<5d} | "
@@ -453,8 +468,8 @@ for s in summary:
           f"{s['meas_nis_mean_mean']:>4.2f}±{s['meas_nis_mean_std']:>3.2f} | "
           f"{s['meas_nrmse_mean_mean']:>10.4f} | "
           f"{s['meas_cov_mean_mean']:>4.0f}±{s['meas_cov_mean_std']:>3.0f} | "
-          f"{s['nsd_nrmse_mean_mean']:>10.4f} | "
-          f"{s['nsd_ss_median_mean']:>4.2f}±{s['nsd_ss_median_std']:>3.2f}")
+          f"{s['nsd_nrmse_reported_mean']:>10.4f} | "
+          f"{s['nsd_ss_reported_mean']:>4.2f}±{s['nsd_ss_reported_std']:>3.2f}")
 if args.auto_reject:
     print(f"\n  divergence rejection ON (peak sigma > {args.reject_mult}x per-size median);"
           f" 'used/div' = clean runs kept / divergent seeds rejected.")
@@ -476,15 +491,16 @@ eb(ax[0, 0], "meas_nrmse_mean", "tab:red", "o", "Normalised RMSE", "(a) Measured
 eb(ax[0, 1], "meas_nis_mean", "tab:blue", "s", "Mean NIS", "(b) Measured — consistency (NIS)", 1.0, "ideal 1.0")
 eb(ax[0, 2], "meas_cov_mean", "tab:green", "^", "2σ coverage (%)", "(c) Measured — 2σ coverage", 95, "target 95%")
 axd = ax[1, 0]
-for name in nsd_names:
+for name in REPORTED_NSD:
     axd.errorbar(Ns, [s[f"nsd_{name}_mean"] for s in summary],
-                 [s[f"nsd_{name}_std"] for s in summary], fmt="o-", lw=1.2, ms=4, capsize=2, label=name)
-axd.errorbar(Ns, [s["nsd_nrmse_mean_mean"] for s in summary],
-             [s["nsd_nrmse_mean_std"] for s in summary], fmt="k--", lw=2, ms=6, capsize=4, label="mean")
+                 [s[f"nsd_{name}_std"] for s in summary], fmt="o-", lw=1.4, ms=5, capsize=2,
+                 label=REPORTED_LABEL.get(name, name))
+axd.errorbar(Ns, [s["nsd_nrmse_reported_mean"] for s in summary],
+             [s["nsd_nrmse_reported_std"] for s in summary], fmt="k--", lw=2, ms=6, capsize=4, label="mean")
 axd.set_xlabel("Ensemble size N"); axd.set_ylabel("Normalised RMSE")
-axd.set_title("(d) NSDs — NRMSE", fontsize=11); axd.legend(fontsize=7, ncol=2); axd.grid(alpha=0.2)
-eb(ax[1, 1], "nsd_ss_median", "tab:orange", "D", "Spread-skill (std/RMSE)",
-   "(e) NSDs — calibration (spread-skill)", 1.0, "ideal 1.0")
+axd.set_title("(d) Reported NSDs — NRMSE", fontsize=11); axd.legend(fontsize=8, ncol=2); axd.grid(alpha=0.2)
+eb(ax[1, 1], "nsd_ss_reported", "tab:orange", "D", "Spread-skill (std/RMSE)",
+   "(e) Reported NSDs — calibration (spread-skill)", 1.0, "ideal 1.0")
 eb(ax[1, 2], "wall_time_s", "tab:gray", "o", "Wall time (s)", "(f) Computational cost / pass")
 plt.tight_layout()
 out = OUT_DIR / "ensemble_size_sensitivity.png"

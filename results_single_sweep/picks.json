@@ -1,0 +1,20 @@
+{
+  "_alpha_obs_rule": "alpha_obs = largest alpha whose Asn NRMSE stays within 25% of its minimum-achievable value (widest band affordable before accuracy degrades sharply). Robustly selects 0.002 in every fold (0.002 is ~1.13x min NRMSE; 0.004 jumps to ~1.44x). Confirmed downstream-inert on the NSDs by scripts/test_asn_alpha_on_nsd.py.",
+  "_alpha_nsd_rule": "alpha_nsd = smallest alpha at which the reported-NSD (UDPGal, UDPGlc, UDPGlcNAc) mean spread-skill reaches ~1 (>=0.95) on the seed-averaged posterior (10 clean seeds, divergent replicates rejected via scripts/sweep_alpha_nsd_multiseed.py --auto-reject). The band first matches the error magnitude; larger alpha only degrades NRMSE (sharp knee at 0.03: mean NRMSE 0.76->1.09) without improving calibration. Robustly selects 0.02 in every fold (spread-skill 0.71-0.87 at 0.01 -> 0.98-1.20 at 0.02; any cutoff in (0.87,0.98] gives 0.02). Coverage at 0.02 is 84-100% per fold (pooled 94.7%).",
+  "P1": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  },
+  "P2": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  },
+  "P3": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  },
+  "P4": {
+    "alpha_obs": 0.002,
+    "alpha_nsd": 0.02
+  }
+}

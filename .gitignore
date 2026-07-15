@@ -2,6 +2,18 @@
 # All regenerable by re-running the scripts; not tracked in the code repo. Kept on disk.
 /results*/
 
+# Exception: ship the small calibration inputs the multi-seed scripts read
+# (per-fold calibrated CVs + the α picks). Re-include the parent dirs level by
+# level so git can descend to the two JSON types; everything else stays ignored.
+!/results_single_sweep/
+/results_single_sweep/*
+!/results_single_sweep/picks.json
+!/results_single_sweep/fold_*/
+/results_single_sweep/fold_*/*
+!/results_single_sweep/fold_*/cv/
+/results_single_sweep/fold_*/cv/*
+!/results_single_sweep/fold_*/cv/cv_final.json
+
 # Pickle files (anywhere) — regenerable EnKF trajectories, ~27 MB each, too big for git
 *.pkl
 

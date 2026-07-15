@@ -53,7 +53,9 @@ results_multirun_ensemble_size/  # 05_ensemble_size.py — ensemble-size sensiti
 ```
 
 `sweep_alpha_nsd_multiseed.py` and `validate_multiseed.py` read the calibrated CVs / α picks
-from `results_single_sweep/`, so run `04_cross_validate.py` first.
+from `results_single_sweep/`. Those small inputs — `fold_*/cv/cv_final.json` and `picks.json`
+— are the only results files tracked in git, so the multi-seed scripts run without rebuilding
+them; re-run `04_cross_validate.py` to regenerate them from data.
 
 ## Quick start
 

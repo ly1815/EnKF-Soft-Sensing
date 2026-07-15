@@ -1,6 +1,6 @@
-# Results: keep figures (.png) and small JSON provenance in git; drop the heavy
-# regenerable pickles. NB: we deliberately do NOT blanket-ignore results/ — git
-# cannot re-include a file once its parent directory has been ignored.
+# Results folders — generated outputs (figures, trajectories, provenance JSON).
+# All regenerable by re-running the scripts; not tracked in the code repo. Kept on disk.
+/results*/
 
 # Pickle files (anywhere) — regenerable EnKF trajectories, ~27 MB each, too big for git
 *.pkl
@@ -19,13 +19,8 @@ CLAUDE.md
 # Poster / one-off plotting scripts
 plot_poster_*.py
 
-# Superseded scripts + result folders — kept on disk for provenance, out of the
-# published repo. The paper's pipeline (04_cross_validate -> the three
-# results_multirun_* folders) does not depend on any of these.
+# Superseded scripts — kept on disk for provenance, out of the published repo.
 /scripts/legacy/
-/results/
-/results_asn_alpha0.01/
-/results_legacy/
 
 # Original notebook (superseded by nsd_enkf/ + scripts/)
 JPC_NSD_softsensing.ipynb

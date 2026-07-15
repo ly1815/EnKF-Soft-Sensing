@@ -35,19 +35,25 @@ EnKF-Soft-Sensing/
 │   ├── 05_ensemble_size.py           #   ensemble-size sensitivity    → results_multirun_ensemble_size/
 │   ├── plot_maintext_cv.py           #   main-text figures, P1–P4 grid (tuning P4 vs validation P1–P3)
 │   └── plot_p4_maintext.py           #   main-text figures, P4 only
-├── results_single_sweep/             # per-fold calibrated CVs (cv_final.json) + α picks (picks.json)
-├── results_multirun_nsd/             # seed-averaged α_nsd sweep (P4 = adopted tuning fold)
-├── results_multirun_validation/      # seed-averaged held-out validation (P1–P3 under the P4-tuned filter)
-├── results_multirun_ensemble_size/   # ensemble-size sensitivity / calibration diagnostics
 ├── docs/                             # tuning_strategy.md, tuning_log.md, final_parameters.md
 ├── data/raw/                         # experimental data (P1–P4.xlsx)
 ├── pyproject.toml / poetry.lock
 └── LICENSE
 ```
 
-Heavy EnKF trajectory pickles (`*.pkl`, regenerable) are **not** tracked; each results
-folder keeps its figures (`.png`) and small JSON provenance (`cv_final.json`, `picks.json`,
-`seed_selection.json`, `summary.json`) in git. Re-running the scripts regenerates the pickles.
+Running the scripts creates `results_*/` folders (trajectories, figures, and provenance
+JSON such as `cv_final.json` / `picks.json`). These are **generated outputs and are not
+tracked** — they are fully regenerable by re-running the pipeline:
+
+```
+results_single_sweep/            # 04_cross_validate.py — per-fold calibrated CVs + α picks
+results_multirun_nsd/            # sweep_alpha_nsd_multiseed.py — seed-averaged α_nsd sweep (P4 = tuning fold)
+results_multirun_validation/     # validate_multiseed.py — seed-averaged held-out validation (P1–P3)
+results_multirun_ensemble_size/  # 05_ensemble_size.py — ensemble-size sensitivity
+```
+
+`sweep_alpha_nsd_multiseed.py` and `validate_multiseed.py` read the calibrated CVs / α picks
+from `results_single_sweep/`, so run `04_cross_validate.py` first.
 
 ## Quick start
 

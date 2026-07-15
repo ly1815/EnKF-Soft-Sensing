@@ -19,6 +19,14 @@ CLAUDE.md
 # Poster / one-off plotting scripts
 plot_poster_*.py
 
+# Superseded scripts + result folders — kept on disk for provenance, out of the
+# published repo. The paper's pipeline (04_cross_validate -> the three
+# results_multirun_* folders) does not depend on any of these.
+/scripts/legacy/
+/results/
+/results_asn_alpha0.01/
+/results_legacy/
+
 # Original notebook (superseded by nsd_enkf/ + scripts/)
 JPC_NSD_softsensing.ipynb
 

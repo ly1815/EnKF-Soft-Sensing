@@ -14,128 +14,129 @@ We present an **Ensemble Kalman Filter (EnKF)** framework for soft sensing of un
 
 Intracellular nucleotide sugar donors (NSDs) directly determine glycosylation outcomes but are rarely measured due to analytical complexity and process disruption. The EnKF dynamically infers NSD concentrations from routinely available extracellular measurements, enabling earlier and quality-relevant insight into glycosylation-critical intracellular dynamics.
 
-The framework is validated using four independent fed-batch experiments (P1-P4) with distinct galactose and uridine feeding strategies that are not used for model calibration.
+The framework uses four independent fed-batch experiments (P1–P4) with distinct galactose and uridine feeding strategies. All covariance parameters are calibrated **from data** — there are no hand-tuned frozen intermediates — and the filter is stress-tested by seed-averaged, divergence-screened cross-validation.
 
-## Repository Structure
+## Repository structure
 
 ```
 EnKF-Soft-Sensing/
-├── nsd_enkf/                # Core library
-│   ├── config.py            #   Constants, model & noise parameters
-│   ├── data_loader.py       #   Excel data loading, feed schedules
-│   ├── model.py             #   17-state ODE model, volume integration
-│   ├── enkf.py              #   EnsembleKalmanFilter class & runners
-│   ├── analysis.py          #   RMSE, measurement ensembles, Gramian
-│   ├── plotting.py          #   Publication-quality plotting functions
-│   └── io_utils.py          #   Pickle I/O helpers
-├── scripts/                 # Numbered systematic-tuning pipeline (run in order)
-│   ├── 01_tune_cv.py        #   Stage 3  measured-state CVs -> NIV=1 (cap 0.006)
-│   ├── 02_tune_alpha_asn.py #   Stage 4a observable-tier alpha (Asn & Glu)
-│   ├── 03_tune_alpha_nsd.py #   Stage 4b NSD alpha (band inspection)
-│   ├── 04_cross_validate.py #   full-fold cross-validation of the tuning procedure
-│   ├── 05_ensemble_size.py  #   Stage 5  ensemble-size sensitivity (justify N=100)
-│   ├── run_enkf.py          #   utility: run the production EnKF pipeline
-│   ├── plot_results.py      #   utility: generate figures from a run
-│   └── legacy/              #   superseded scripts (kept for provenance)
-├── docs/
-│   ├── tuning_strategy.md   #   the systematic tuning method (manuscript-ready)
-│   └── tuning_log.md        #   chronological tuning decision log
-├── data/raw/                # Experimental data (P1-P4, not in git)
-├── results/                 # Generated outputs (pkls gitignored, figures tracked)
-├── pyproject.toml
-├── poetry.lock
+├── nsd_enkf/                         # Core library
+│   ├── config.py                     #   constants, model & noise parameters (R, P0 from data)
+│   ├── data_loader.py                #   Excel data loading, feed schedules
+│   ├── model.py                      #   17-state ODE model, volume integration
+│   ├── enkf.py                       #   EnsembleKalmanFilter class & runners
+│   ├── analysis.py                   #   RMSE, measurement ensembles, Gramian
+│   ├── plotting.py                   #   publication-quality plotting functions
+│   └── io_utils.py                   #   pickle I/O helpers
+├── scripts/                          # Pipeline that produces the paper's results (see below)
+│   ├── 04_cross_validate.py          #   calibrate CVs + sweep/pick α per fold → results_single_sweep/
+│   ├── sweep_alpha_nsd_multiseed.py  #   seed-averaged α_nsd sweep    → results_multirun_nsd/
+│   ├── validate_multiseed.py         #   seed-averaged held-out CV    → results_multirun_validation/
+│   ├── 05_ensemble_size.py           #   ensemble-size sensitivity    → results_multirun_ensemble_size/
+│   ├── plot_maintext_cv.py           #   main-text figures, P1–P4 grid (tuning P4 vs validation P1–P3)
+│   └── plot_p4_maintext.py           #   main-text figures, P4 only
+├── results_single_sweep/             # per-fold calibrated CVs (cv_final.json) + α picks (picks.json)
+├── results_multirun_nsd/             # seed-averaged α_nsd sweep (P4 = adopted tuning fold)
+├── results_multirun_validation/      # seed-averaged held-out validation (P1–P3 under the P4-tuned filter)
+├── results_multirun_ensemble_size/   # ensemble-size sensitivity / calibration diagnostics
+├── docs/                             # tuning_strategy.md, tuning_log.md, final_parameters.md
+├── data/raw/                         # experimental data (P1–P4.xlsx)
+├── pyproject.toml / poetry.lock
 └── LICENSE
 ```
 
-## Quick Start
+Heavy EnKF trajectory pickles (`*.pkl`, regenerable) are **not** tracked; each results
+folder keeps its figures (`.png`) and small JSON provenance (`cv_final.json`, `picks.json`,
+`seed_selection.json`, `summary.json`) in git. Re-running the scripts regenerates the pickles.
 
-### Install dependencies
+## Quick start
 
 ```bash
 pip install poetry
 poetry install
 ```
 
-### Run the EnKF pipeline
+## Reproducing the results
+
+The three published results folders are produced by a two-part pipeline: a data-driven
+**calibration** step, then three **multi-seed** production runs. Every EnKF pass uses a
+distinct seed and archives the full 17-state ensemble mean **and** standard-deviation
+(uncertainty) trajectory; the multi-seed scripts report the seed-averaged posterior with
+divergent replicates rejected (pool-relative peak-σ rule, identical across all three).
+
+Measurement noise `R` and the initial covariance `P0` are set from data in `config.py`;
+they are never fit to filter residuals.
+
+### 1. Calibration → `results_single_sweep/`
+
+`04_cross_validate.py` calibrates, per fold, the 8 measured-state multiplicative CVs by the
+fixed-point rule that drives each normalised innovation variance to 1 (NIV → 1, cap
+`CV_MAX = 0.006`), and sweeps the additive process-noise scalars α_obs (Asn/Glu tier) and
+α_nsd (7 NSDs). It writes `fold_<X>/cv/cv_final.json` — the calibrated CVs that the
+multi-seed scripts consume — plus per-alpha sweep figures.
 
 ```bash
-# Run with default parameters (all datasets, 10 runs, N=100)
-poetry run python scripts/run_enkf.py
+# sweep stage: per-fold CV calibration + α sweeps (resumable; long — use --train for one fold)
+poetry run python scripts/04_cross_validate.py --stage sweep
+poetry run python scripts/04_cross_validate.py --stage sweep --train P4 --resume
 
-# Override parameters
-poetry run python scripts/run_enkf.py --run my_experiment --kq 0.5 --n-runs 5 --ensemble-size 200
+# after inspecting the sweeps, record the chosen α per fold in results_single_sweep/picks.json, then:
+poetry run python scripts/04_cross_validate.py --stage validate --picks results_single_sweep/picks.json
 ```
 
-### Generate figures
+`picks.json` format:
+
+```json
+{ "P1": {"alpha_obs": 0.002, "alpha_nsd": 0.02},
+  "P2": {"alpha_obs": 0.002, "alpha_nsd": 0.02},
+  "P3": {"alpha_obs": 0.002, "alpha_nsd": 0.02},
+  "P4": {"alpha_obs": 0.002, "alpha_nsd": 0.02} }
+```
+
+### 2. `results_multirun_nsd/` — seed-averaged α_nsd sweep
+
+Repeats the α_nsd sweep over N seeds per fold using each fold's calibrated CVs (from step 1)
+and the adopted α_obs = 0.002, reporting calibration on the seed-averaged posterior. **P4 is
+the adopted tuning fold** for the paper's main text.
 
 ```bash
-# All figures
-poetry run python scripts/plot_results.py --run my_experiment
-
-# Only specific figure groups
-poetry run python scripts/plot_results.py --run my_experiment --only uncertainty
-poetry run python scripts/plot_results.py --run my_experiment --only diagnostics
+caffeinate -i poetry run python scripts/sweep_alpha_nsd_multiseed.py --n-runs 10 --datasets P4
 ```
 
-## Systematic covariance tuning
+### 3. `results_multirun_validation/` — seed-averaged held-out validation
 
-The EnKF noise parameters are calibrated by an ordered, reproducible-from-data procedure.
-The full method (criteria, reasoning, dependencies) is in
+Applies each training fold's calibrated CVs + picked α (from step 1) to the three held-out
+batches it never saw, over N seeds, rejecting divergent replicates. Nothing is tuned here —
+the honest generalisation test.
+
+```bash
+caffeinate -i poetry run python scripts/validate_multiseed.py --folds P4
+```
+
+### 4. `results_multirun_ensemble_size/` — ensemble-size sensitivity
+
+Self-contained (reads the adopted production filter from `config.py`, no dependency on
+steps 1–3). Runs N ∈ {25, 50, 100, 150, 200}, 10 seeds each, on P4; rejects divergent
+replicates and reports NRMSE / NIS / 2σ coverage / spread-skill / cost vs N — the
+justification for N = 100.
+
+```bash
+caffeinate -i poetry run python scripts/05_ensemble_size.py --n-runs 10 --resume
+```
+
+### 5. Figures
+
+```bash
+poetry run python scripts/plot_maintext_cv.py   # P1–P4 grid: P4 (tuning) + P1–P3 (validation), 2σ bands
+poetry run python scripts/plot_p4_maintext.py    # P4-only main-text figures
+```
+
+Each multi-seed script also writes its own per-run figures into its results folder. All runs
+are crash-safe and resumable (per-pass cache); a kill costs at most one pass.
+
+The tuning method (criteria, dependencies, reasoning) is documented in
 [`docs/tuning_strategy.md`](docs/tuning_strategy.md); the decision history is in
-[`docs/tuning_log.md`](docs/tuning_log.md). The `scripts/` are numbered to match the steps:
-
-| Step | Script | What it tunes | Metric |
-|------|--------|---------------|--------|
-| 3  | `01_tune_cv.py`        | measured-state per-step CVs (multiplicative noise) | NIV → 1 (filter consistency), cap `CV_MAX=0.006` |
-| 4a | `02_tune_alpha_asn.py` | observable-tier additive α (Asn & Glu, shared)     | Asn NRMSE + coverage |
-| 4b | `03_tune_alpha_nsd.py` | NSD additive α (7 intracellular states)            | NSD NRMSE + band inspection |
-| —  | `04_cross_validate.py` | full-fold CV of the whole procedure across P1–P4   | held-out NSD/Asn NRMSE + coverage |
-| 5  | `05_ensemble_size.py`  | verify ensemble size N                             | NIS / coverage / spread-skill vs N |
-
-Measurement noise `R` and the initial covariance `P0` are set from data in `config.py`
-(Stages 0–2), not by these scripts. Each script tunes on **P4** and validates on **P1–P3**;
-`04_cross_validate.py` rotates that split across all four batches. **Every run saves the
-full 17-state ensemble mean *and* standard-deviation (uncertainty) trajectories** to
-`results/<run>/pkl/` (bands = mean ± k·std), plus figures to `results/<run>/figures/`.
-
-### Cross-validation (`04_cross_validate.py`) — modes A and B
-
-`04` re-tunes on each fold and evaluates on the held-out batches. It is **fully automated**
-— no manual choices per fold. Two re-tune modes, selected with `--retune`:
-
-- **Mode A — `--retune cv`** *(default, ~6.6 h)*: per fold, re-calibrate only the measured
-  CVs (automated NIV=1); hold α_obs/α_nsd at the adopted config constants. Tests whether the
-  *automated calibration* generalizes.
-- **Mode B — `--retune all`** *(~14 h)*: additionally auto-select α_nsd and α_obs (argmin
-  NRMSE) per fold. Fully data-driven; heavier.
-
-Run them on separate days (each resumable); the A-vs-B comparison is assembled from
-whatever is already on disk. To keep each run short, add `--train <dataset>` to do **one
-fold at a time** (~1.6 h), accumulating into the same summary:
-
-```bash
-# Mode A — whole CV, or one fold at a time:
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv --train P4   # just the P4-trained fold
-
-# Mode B (run after A to also emit the A-vs-B comparison):
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune all
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune all --train P4
-
-# --scheme loo for leave-one-out (train on 3, hold out 1); --resume to continue; --retune both for one 20h shot
-```
-
-```bash
-# Steps 3 -> 4a -> 4b, then cross-validation, then N verification:
-caffeinate -i ./.venv/bin/python scripts/01_tune_cv.py --dataset P4
-caffeinate -i ./.venv/bin/python scripts/02_tune_alpha_asn.py
-caffeinate -i ./.venv/bin/python scripts/03_tune_alpha_nsd.py
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv   # mode A (~6.6h)
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune all  # mode B (~14h); emits A-vs-B
-# or break it into one short fold per run (accumulates into the same summary):
-caffeinate -i ./.venv/bin/python scripts/04_cross_validate.py --retune cv --train P4   # ~1.6h; then --train P1/P2/P3
-caffeinate -i ./.venv/bin/python scripts/05_ensemble_size.py
-```
+[`docs/tuning_log.md`](docs/tuning_log.md).
 
 ## Citation
 

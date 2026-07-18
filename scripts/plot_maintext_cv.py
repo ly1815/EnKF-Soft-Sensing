@@ -160,7 +160,7 @@ def cv_legend(fig, measurement_label=None, y=-0.015):
         "Experimental Measurement",
     ]
     fig.legend(handles=handles, labels=labels, loc="lower center", ncol=5,
-               fontsize=11.5, frameon=False, bbox_to_anchor=(0.5, y),
+               fontsize=13, frameon=False, bbox_to_anchor=(0.5, y),
                columnspacing=2.2, handletextpad=0.6, handlelength=2.4)
 
 
@@ -185,7 +185,7 @@ for r, (name, ylab) in enumerate(MEAS_ROWS):
         if r == nr - 1:
             ax.set_xlabel("Time (hours)", fontsize=11, fontweight="bold")
         li += 1
-cv_legend(fig, "Measurement Update", y=-0.004)
+cv_legend(fig, "Measurement Update", y=0.045)
 plt.tight_layout(rect=[0, 0.085, 1, 1])
 out = OUTDIR / "measured_metabolites_CV_bands.png"
 fig.savefig(out, dpi=args.dpi, bbox_inches="tight"); plt.close(fig)
@@ -226,7 +226,7 @@ for r, (name, jloc, ylab) in enumerate(NSD_ROWS):
         if r == nr - 1:
             ax.set_xlabel("Time (hours)", fontsize=11, fontweight="bold")
         li += 1
-cv_legend(fig, "Validation Measurement", y=-0.012)
+cv_legend(fig, "Validation Measurement", y=0.05)
 plt.tight_layout(rect=[0, 0.11, 1, 1])
 out = OUTDIR / "main_nsd_CV_bands.png"
 fig.savefig(out, dpi=args.dpi, bbox_inches="tight"); plt.close(fig)

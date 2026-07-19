@@ -478,29 +478,19 @@ else:
 
 # ── Figure ───────────────────────────────────────────────────────────────────
 Ns = [s["N"] for s in summary]
-def eb(ax, key, color, marker, ylabel, title, ref=None, reflabel=None):
+def eb(ax, key, color, marker, ylabel, title):
     ax.errorbar(Ns, [s[key + "_mean"] for s in summary], [s[key + "_std"] for s in summary],
                 fmt=f"{marker}-", color=color, lw=2, ms=7, capsize=4)
-    if ref is not None:
-        ax.axhline(ref, ls="--", color="gray", alpha=0.6, label=reflabel); ax.legend(fontsize=9)
     ax.set_xlabel("Ensemble size N"); ax.set_ylabel(ylabel); ax.set_title(title, fontsize=11)
     ax.grid(alpha=0.2)
 
 fig, ax = plt.subplots(2, 3, figsize=(16, 9))
 eb(ax[0, 0], "meas_nrmse_mean", "tab:red", "o", "Normalised RMSE", "(a) Measured — NRMSE")
-eb(ax[0, 1], "meas_nis_mean", "tab:blue", "s", "Mean NIS", "(b) Measured — consistency (NIS)", 1.0, "ideal 1.0")
-eb(ax[0, 2], "meas_cov_mean", "tab:green", "^", "2σ coverage (%)", "(c) Measured — 2σ coverage", 95, "target 95%")
-axd = ax[1, 0]
-for name in REPORTED_NSD:
-    axd.errorbar(Ns, [s[f"nsd_{name}_mean"] for s in summary],
-                 [s[f"nsd_{name}_std"] for s in summary], fmt="o-", lw=1.4, ms=5, capsize=2,
-                 label=REPORTED_LABEL.get(name, name))
-axd.errorbar(Ns, [s["nsd_nrmse_reported_mean"] for s in summary],
-             [s["nsd_nrmse_reported_std"] for s in summary], fmt="k--", lw=2, ms=6, capsize=4, label="mean")
-axd.set_xlabel("Ensemble size N"); axd.set_ylabel("Normalised RMSE")
-axd.set_title("(d) Reported NSDs — NRMSE", fontsize=11); axd.legend(fontsize=8, ncol=2); axd.grid(alpha=0.2)
+eb(ax[0, 1], "meas_nis_mean", "tab:blue", "s", "Mean NIS", "(b) Measured — consistency (NIS)")
+eb(ax[0, 2], "meas_cov_mean", "tab:green", "^", "2σ coverage (%)", "(c) Measured — 2σ coverage")
+eb(ax[1, 0], "nsd_nrmse_mean", "tab:purple", "o", "Normalised RMSE", "(d) NSDs — NRMSE")
 eb(ax[1, 1], "nsd_ss_reported", "tab:orange", "D", "Spread-skill (std/RMSE)",
-   "(e) Reported NSDs — calibration (spread-skill)", 1.0, "ideal 1.0")
+   "(e) Reported NSDs — calibration (spread-skill)")
 eb(ax[1, 2], "wall_time_s", "tab:gray", "o", "Wall time (s)", "(f) Computational cost / pass")
 plt.tight_layout()
 out = OUT_DIR / "ensemble_size_sensitivity.png"

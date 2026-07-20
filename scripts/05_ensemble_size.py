@@ -476,13 +476,22 @@ if args.auto_reject:
 else:
     print("\n  divergence rejection OFF (--no-reject): all seeds aggregated.")
 
-# ── Figure ───────────────────────────────────────────────────────────────────
+# ── Figure (bold paper-figure style: LABEL 14 / TICK 12 / TITLE 14, spine 1.5) ─
+LABEL_FS, TICK_FS, TITLE_FS = 14, 12, 14
 Ns = [s["N"] for s in summary]
 def eb(ax, key, color, marker, ylabel, title):
     ax.errorbar(Ns, [s[key + "_mean"] for s in summary], [s[key + "_std"] for s in summary],
-                fmt=f"{marker}-", color=color, lw=2, ms=7, capsize=4)
-    ax.set_xlabel("Ensemble size N"); ax.set_ylabel(ylabel); ax.set_title(title, fontsize=11)
-    ax.grid(alpha=0.2)
+                fmt=f"{marker}-", color=color, lw=2, ms=8, capsize=4,
+                markeredgecolor="black", markeredgewidth=0.8)
+    ax.set_xlabel("Ensemble size $N$", fontsize=LABEL_FS, fontweight="bold")
+    ax.set_ylabel(ylabel, fontsize=LABEL_FS, fontweight="bold")
+    ax.set_title(title, fontsize=TITLE_FS, fontweight="bold", loc="left")
+    ax.tick_params(axis="both", labelsize=TICK_FS)
+    for lab in ax.get_xticklabels() + ax.get_yticklabels():
+        lab.set_fontweight("bold")
+    for sp in ax.spines.values():
+        sp.set_linewidth(1.5)
+    ax.grid(alpha=0.25)
 
 fig, ax = plt.subplots(2, 3, figsize=(16, 9))
 eb(ax[0, 0], "meas_nrmse_mean", "tab:red", "o", "Normalised RMSE", "(a) Measured — NRMSE")
@@ -490,10 +499,15 @@ eb(ax[0, 1], "meas_nis_mean", "tab:blue", "s", "Mean NIS", "(b) Measured — con
 eb(ax[0, 2], "meas_cov_mean", "tab:green", "^", "2σ coverage (%)", "(c) Measured — 2σ coverage")
 eb(ax[1, 0], "nsd_nrmse_mean", "tab:purple", "o", "Normalised RMSE", "(d) NSDs — NRMSE")
 eb(ax[1, 1], "nsd_ss_reported", "tab:orange", "D", "Spread-skill (std/RMSE)",
-   "(e) Reported NSDs — calibration (spread-skill)")
-eb(ax[1, 2], "wall_time_s", "tab:gray", "o", "Wall time (s)", "(f) Computational cost / pass")
+   "(e) NSDs — spread-skill")
+eb(ax[1, 2], "wall_time_s", "tab:gray", "o", "Wall time (s)", "(f) Cost per pass")
 plt.tight_layout()
 out = OUT_DIR / "ensemble_size_sensitivity.png"
-plt.savefig(out, dpi=200, bbox_inches="tight"); plt.close()
+plt.savefig(out, dpi=300, bbox_inches="tight")
+paper_fig = Path("/Users/luxi.yu/Research/Soft_Sensing_Paper/Figs/ensemble_size_sensitivity.png")
+if paper_fig.parent.exists():
+    plt.savefig(paper_fig, dpi=300, bbox_inches="tight")
+    print(f"Saved figure: {paper_fig}")
+plt.close()
 print(f"\nSaved figure: {out}")
 print("Done.")

@@ -34,7 +34,6 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import seaborn as sns
 from matplotlib.patches import Patch
 from matplotlib.font_manager import FontProperties
 from tqdm import tqdm
@@ -117,7 +116,6 @@ def plot_gramian(ds_name, Wo, log_offset=1e-20, nsd_hatch="//",
                  exclude_last_n_states=7, exclude_states_plot=("Glu",),
                  asn_name="Asn", selected_nsds=("UDPGal", "UDPGlc", "UDPGlcNAc"),
                  selected_nsd_labels=("UDP-Gal", "UDP-Glc", "UDP-GlcNAc")):
-    sns.set(style="white", context="talk")
     Wo = np.asarray(Wo, dtype=float)
 
     # panel (a): extracellular states (drop the NSD block + Glu)
@@ -141,16 +139,16 @@ def plot_gramian(ds_name, Wo, log_offset=1e-20, nsd_hatch="//",
         bars_a[asn_pos].set_hatch(nsd_hatch)
         bars_a[asn_pos].set_linewidth(2.2)
     ax_a.axhline(0, color="black", linestyle="--", linewidth=1)
-    ax_a.set_title("(a)", fontsize=16, fontweight="bold", loc="left")
+    ax_a.set_title("(a)", fontsize=14, fontweight="bold", loc="left")
     ax_a.set_xticks(np.arange(len(idx_a)))
     ax_a.set_xticklabels(labels_a, rotation=90, fontsize=12, fontweight="bold")
-    ax_a.set_ylabel("log10(Observability Score)", fontsize=13, fontweight="bold")
+    ax_a.set_ylabel("log10(Observability Score)", fontsize=14, fontweight="bold")
     ax_a.grid(alpha=0.12)
     ax_a.tick_params(axis="y", labelsize=12)
     for lab in ax_a.get_yticklabels():
         lab.set_fontweight("bold")
     for spine in ax_a.spines.values():
-        spine.set_linewidth(2)
+        spine.set_linewidth(1.5)
 
     # (b)
     yb = np.log10(Wo[idx_b] + log_offset)
@@ -159,16 +157,16 @@ def plot_gramian(ds_name, Wo, log_offset=1e-20, nsd_hatch="//",
         bb.set_hatch(nsd_hatch)
         bb.set_linewidth(2.0)
     ax_b.axhline(0, color="black", linestyle="--", linewidth=1)
-    ax_b.set_title("(b)", fontsize=16, fontweight="bold", loc="left")
+    ax_b.set_title("(b)", fontsize=14, fontweight="bold", loc="left")
     ax_b.set_xticks(np.arange(len(idx_b)))
     ax_b.set_xticklabels(labels_b, rotation=0, fontsize=12, fontweight="bold")
-    ax_b.set_ylabel("log10(Observability Score)", fontsize=13, fontweight="bold")
+    ax_b.set_ylabel("log10(Observability Score)", fontsize=14, fontweight="bold")
     ax_b.grid(alpha=0.12)
     ax_b.tick_params(axis="y", labelsize=12)
     for lab in ax_b.get_yticklabels():
         lab.set_fontweight("bold")
     for spine in ax_b.spines.values():
-        spine.set_linewidth(2)
+        spine.set_linewidth(1.5)
 
     # shared legend: measured (solid) vs unmeasured (hatched)
     handles = [

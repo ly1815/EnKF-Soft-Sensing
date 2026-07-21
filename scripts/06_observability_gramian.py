@@ -16,7 +16,7 @@ Measured outputs are the 8 routinely available extracellular states
 
 Figure (one per dataset, 12.5x5in, dpi 600 — same layout/style as the reference):
   (a) extracellular Gramian (log10); Asn hatched as unmeasured
-  (b) selected-NSD Gramian (log10); all hatched (unmeasured)
+  (b) all-NSD Gramian (log10); all hatched (unmeasured)
 Bars are drawn in a calm grey (not the original orange).
 
 Usage:
@@ -114,8 +114,11 @@ def compute_gramian(ds_name, epsilon=0.01, clip_value=1e-12):
 # ── Figure (ported from notebook cell 54; bars in calm grey) ──────────────────
 def plot_gramian(ds_name, Wo, log_offset=1e-20, nsd_hatch="//",
                  exclude_last_n_states=7, exclude_states_plot=("Glu",),
-                 asn_name="Asn", selected_nsds=("UDPGal", "UDPGlc", "UDPGlcNAc"),
-                 selected_nsd_labels=("UDP-Gal", "UDP-Glc", "UDP-GlcNAc")):
+                 asn_name="Asn",
+                 selected_nsds=("UDPGal", "UDPGalNAc", "UDPGlc", "UDPGlcNAc",
+                                "GDPMan", "GDPFuc", "CMPNeu5Ac"),
+                 selected_nsd_labels=("UDP-Gal", "UDP-GalNAc", "UDP-Glc", "UDP-GlcNAc",
+                                      "GDP-Man", "GDP-Fuc", "CMP-Neu5Ac")):
     Wo = np.asarray(Wo, dtype=float)
 
     # panel (a): extracellular states (drop the NSD block + Glu)
@@ -159,7 +162,7 @@ def plot_gramian(ds_name, Wo, log_offset=1e-20, nsd_hatch="//",
     ax_b.axhline(0, color="black", linestyle="--", linewidth=1)
     ax_b.set_title("(b)", fontsize=14, fontweight="bold", loc="left")
     ax_b.set_xticks(np.arange(len(idx_b)))
-    ax_b.set_xticklabels(labels_b, rotation=0, fontsize=12, fontweight="bold")
+    ax_b.set_xticklabels(labels_b, rotation=45, ha="right", fontsize=12, fontweight="bold")
     ax_b.set_ylabel("log10(Observability Score)", fontsize=14, fontweight="bold")
     ax_b.grid(alpha=0.12)
     ax_b.tick_params(axis="y", labelsize=12)

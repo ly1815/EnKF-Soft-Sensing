@@ -498,8 +498,10 @@ eb(ax[0, 0], "meas_nrmse_mean", "tab:red", "o", "Normalised RMSE", "(a) Measured
 eb(ax[0, 1], "meas_nis_mean", "tab:blue", "s", "Mean NIS", "(b) Measured — consistency (NIS)")
 eb(ax[0, 2], "meas_cov_mean", "tab:green", "^", "2σ coverage (%)", "(c) Measured — 2σ coverage")
 eb(ax[1, 0], "nsd_nrmse_mean", "tab:purple", "o", "Normalised RMSE", "(d) NSDs — NRMSE")
-eb(ax[1, 1], "nsd_ss_reported", "tab:orange", "D", "Spread-skill (std/RMSE)",
-   "(e) NSDs — spread-skill")
+eb(ax[1, 1], "nsd_ss_reported", "tab:orange", "D", "Spread-to-error",
+   "(e) NSDs — spread-to-error")
+ax[1, 1].axhline(1.0, ls="--", color="0.5", lw=1.5, zorder=1, label="Ideal (= 1)")
+ax[1, 1].legend(frameon=False, prop={"weight": "bold", "size": TICK_FS}, loc="best")
 eb(ax[1, 2], "wall_time_s", "tab:gray", "o", "Wall time (s)", "(f) Cost per pass")
 plt.tight_layout()
 out = OUT_DIR / "ensemble_size_sensitivity.png"

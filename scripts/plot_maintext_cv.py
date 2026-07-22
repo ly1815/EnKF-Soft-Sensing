@@ -168,12 +168,12 @@ def cv_legend(fig, measurement_label=None, y=-0.015):
 MEAS_ROWS = [
     ("Xv",  "Viable Cell Density (cell $L^{-1}$)"),
     ("Gal", "Galactose Concentration (mM)"),
-    ("Urd", "Urdine Concentration (mM)"),
+    ("Urd", "Uridine Concentration (mM)"),
     ("Glc", "Glucose Concentration (mM)"),
     ("Gln", "Glutamine Concentration (mM)"),
 ]
 nr, nc = len(MEAS_ROWS), len(COLS)
-fig, axes = plt.subplots(nr, nc, figsize=(4.7 * nc, 3.05 * nr), sharex=True)
+fig, axes = plt.subplots(nr, nc, figsize=(4.7 * nc, 3.05 * nr), sharex=False)
 li = 0
 for r, (name, ylab) in enumerate(MEAS_ROWS):
     si = STATE_NAMES.index(name)
@@ -181,9 +181,8 @@ for r, (name, ylab) in enumerate(MEAS_ROWS):
         ax = axes[r, c]
         draw_panel(ax, ds, si, ylabel=ylab, meas_vals=MEAS[ds]["set_meas"][:, si],
                    meas_err=MEAS[ds]["set_meas_err"][:, si], letter=LETTERS[li],
-                   show_role=(r == 0), show_ylabel=(c == 0))
-        if r == nr - 1:
-            ax.set_xlabel("Time (hours)", fontsize=11, fontweight="bold")
+                   show_role=(r == 0), show_ylabel=True)
+        ax.set_xlabel("Time (hours)", fontsize=11, fontweight="bold")
         li += 1
 cv_legend(fig, "Measurement Update", y=0.045)
 plt.tight_layout(rect=[0, 0.085, 1, 1])
@@ -193,13 +192,13 @@ print(f"Saved: {out}")
 
 # ── Figure 2: Asparagine — 1 x 4 over P1..P4 (single row, same format) ───────────
 nc = len(COLS)
-fig, axes = plt.subplots(1, nc, figsize=(4.7 * nc, 3.9), sharex=True)
+fig, axes = plt.subplots(1, nc, figsize=(4.7 * nc, 3.9), sharex=False)
 si = STATE_NAMES.index("Asn")
 for i, ds in enumerate(COLS):
     ax = axes[i]
     draw_panel(ax, ds, si, ylabel="Asparagine Concentration (mM)",
                meas_vals=MEAS[ds]["set_meas"][:, si], meas_err=MEAS[ds]["set_meas_err"][:, si],
-               letter=LETTERS[i], show_role=True, show_ylabel=(i == 0), tag_bottom=True)
+               letter=LETTERS[i], show_role=True, show_ylabel=True, tag_bottom=True)
     ax.set_xlabel("Time (hours)", fontsize=11, fontweight="bold")
 cv_legend(fig, "Measurement", y=-0.03)
 plt.tight_layout(rect=[0, 0.11, 1, 1])
@@ -214,7 +213,7 @@ NSD_ROWS = [
     ("UDPGlcNAc", 3, "UDP-GlcNAc Concentration (mM)"),
 ]
 nr, nc = len(NSD_ROWS), len(COLS)
-fig, axes = plt.subplots(nr, nc, figsize=(4.7 * nc, 3.4 * nr), sharex=True)
+fig, axes = plt.subplots(nr, nc, figsize=(4.7 * nc, 3.4 * nr), sharex=False)
 li = 0
 for r, (name, jloc, ylab) in enumerate(NSD_ROWS):
     si = STATE_NAMES.index(name)
@@ -222,9 +221,8 @@ for r, (name, jloc, ylab) in enumerate(NSD_ROWS):
         ax = axes[r, c]
         draw_panel(ax, ds, si, ylabel=ylab, meas_vals=MEAS[ds]["NSD_meas"][:, jloc],
                    meas_err=MEAS[ds]["NSD_meas_err"][:, jloc], letter=LETTERS[li],
-                   show_role=(r == 0), show_ylabel=(c == 0))
-        if r == nr - 1:
-            ax.set_xlabel("Time (hours)", fontsize=11, fontweight="bold")
+                   show_role=(r == 0), show_ylabel=True)
+        ax.set_xlabel("Time (hours)", fontsize=11, fontweight="bold")
         li += 1
 cv_legend(fig, "Validation Measurement", y=0.05)
 plt.tight_layout(rect=[0, 0.11, 1, 1])
